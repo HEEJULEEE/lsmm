@@ -11,7 +11,8 @@ from .dataset_config import *
 from .dataset import FusionDatasetFLIR, FusionDatasetM3FD, DetectionDataset
 from .dataset import XBitFusionDatsetSTF, XBitDetectionDatset
 
-def create_dataset(name, root, splits=('train', 'val')):
+def create_dataset(name, root, vlm_csv_path, splits=('train', 'val')):
+    print(vlm_csv_path)
     if isinstance(splits, str):
         splits = (splits,)
     name = name.lower()
@@ -35,6 +36,7 @@ def create_dataset(name, root, splits=('train', 'val')):
                 thermal_data_dir=root / Path(split_cfg['img_dir']),
                 rgb_data_dir=root / Path(split_cfg['img_dir'].replace('thermal', 'rgb')),
                 parser=create_parser(dataset_cfg.parser, cfg=parser_cfg),
+                vlm_csv_path=vlm_csv_path
             )
 
     elif name == 'flir_aligned_day':
@@ -54,6 +56,7 @@ def create_dataset(name, root, splits=('train', 'val')):
                 thermal_data_dir=root / Path(split_cfg['img_dir']),
                 rgb_data_dir=root / Path(split_cfg['img_dir'].replace('thermal', 'rgb')),
                 parser=create_parser(dataset_cfg.parser, cfg=parser_cfg),
+                vlm_csv_path=vlm_csv_path
             )
 
     elif name == 'flir_aligned_night':
@@ -73,6 +76,7 @@ def create_dataset(name, root, splits=('train', 'val')):
                 thermal_data_dir=root / Path(split_cfg['img_dir']),
                 rgb_data_dir=root / Path(split_cfg['img_dir'].replace('thermal', 'rgb')),
                 parser=create_parser(dataset_cfg.parser, cfg=parser_cfg),
+                vlm_csv_path=vlm_csv_path
             )
 
     elif name == 'flir_aligned_thermal': 
@@ -92,6 +96,7 @@ def create_dataset(name, root, splits=('train', 'val')):
             datasets[s] = dataset_cls(
                 data_dir=root / Path(split_cfg['img_dir']),
                 parser=create_parser(dataset_cfg.parser, cfg=parser_cfg),
+                vlm_csv_path=vlm_csv_path
             )
     elif name == 'flir_aligned_rgb': 
         dataset_cls = DetectionDataset

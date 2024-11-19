@@ -172,7 +172,7 @@ def validate(args):
     if args.num_gpu > 1:
         bench = torch.nn.DataParallel(bench, device_ids=list(range(args.num_gpu)))
 
-    dataset = create_dataset(args.dataset, args.root, args.split)
+    dataset = create_dataset(args.dataset, args.root,'/content/drive/MyDrive/RGBXFusion/toy_vlm.csv', args.split )
     input_config = resolve_input_config(args, model_config)
     loader = create_loader(
         dataset,
@@ -206,12 +206,12 @@ def validate(args):
         )
 
     with torch.no_grad():
-        for i, (thermal_input, rgb_input, target) in enumerate(loader):
+        for i, (thermal_input, rgb_input, target, rgb_weight, thermal_weight) in enumerate(loader):
             with amp_autocast():
                 if args.branch == 'single':
                     output = bench(thermal_input, img_info=target)
                 else:
-                    output = bench(thermal_input, rgb_input, img_info=target, branch=args.branch)
+                    output = bench(thermal_input, rgb_input, rgb_weight, thermal_weight, img_info=target, branch=args.branch)
             evaluator.add_predictions(output, target)
             # print(output)
             if args.wandb:

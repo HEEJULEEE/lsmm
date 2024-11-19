@@ -1,5 +1,5 @@
 from typing import Optional, Dict, List
-
+import pandas as pd
 import torch
 import torch.nn as nn
 from effdet.loss import DetectionLoss
@@ -172,10 +172,12 @@ class DetBenchTrainImagePair(DetBenchTrain):
         return output
 
 
+
+
 class DetBenchPredictImagePair(DetBenchPredict):
 
-    def forward(self, thermal_img, rgb_img, img_info: Optional[Dict[str, torch.Tensor]] = None, branch='fusion'):
-        class_out, box_out = self.model([thermal_img, rgb_img], branch=branch)
+    def forward(self, thermal_img, rgb_img, rgb_weight, thermal_weight, img_info: Optional[Dict[str, torch.Tensor]] = None, branch='fusion'):
+        class_out, box_out = self.model([thermal_img, rgb_img],rgb_weight, thermal_weight, branch=branch)
         class_out, box_out, indices, classes = _post_process(
             class_out, box_out, num_levels=self.num_levels, num_classes=self.num_classes,
             max_detection_points=self.max_detection_points)

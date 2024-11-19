@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import pandas as pd
 
 import effdet
 from effdet import EfficientDet
@@ -78,7 +79,7 @@ class Att_FusionNet(nn.Module):
                 else:
                     raise ValueError('Attention type not supported.')
 
-    def forward(self, data_pair, branch='fusion'):
+    def forward(self, data_pair, rgb_weight, thermal_weight, branch='fusion'):
         thermal_x, rgb_x = data_pair[0], data_pair[1]
 
         class_net = getattr(self, f'{branch}_class_net')
@@ -93,8 +94,11 @@ class Att_FusionNet(nn.Module):
             rgb_x = self.rgb_fpn(rgb_x)
 
             out = []
+            thermal_weight = thermal_weight.view(-1, 1, 1, 1).to(thermal_x[0].device) 
+            rgb_weight = rgb_weight.view(-1, 1, 1, 1).to(thermal_x[0].device)          
+            
             for i, (tx, vx) in enumerate(zip(thermal_x, rgb_x)):
-                x = torch.cat((tx, vx), dim=1)
+                x = torch.cat((tx * thermal_weight, vx * rgb_weight), dim=1)
                 attention = getattr(self, "fusion_"+self.attention_type+str(i))
                 out.append(attention(x))
         else:
@@ -112,113 +116,129 @@ class Att_FusionNet(nn.Module):
         x_box = box_net(out)
 
         return x_class, x_box
+    
 
+# # Function to get weights and call forward for each image
 
-
+# def process_images(model, data_pairs):
+#     for data_pair, image_name in data_pairs:
+#         weights_data = pd.read_excel("/content/RGBXFusion/toy_vlm.csv")
+#         # Retrieve weights for the current image from Excel data
+#         row = weights_data[weights_data['image'] == image_name]
+#         if not row.empty:
+#             rgb_weight = row['rgb_weight'].values[0]
+#             thermal_weight = row['thermal_weight'].values[0]
+#         else:
+#             rgb_weight, thermal_weight = 0.6, 0.4  # default values if weights are not found
+#         print(rgb_weight, thermal_weight)
+        
+#         # Call the forward method with the image-specific weights
+#         x_class, x_box = model.forward(data_pair, branch='fusion', rgb_weight=rgb_weight, thermal_weight=thermal_weight)
+#         print(f"Results for {image_name}: Class - {x_class}, Box - {x_box}")
 
 ##################################### Adaptive Fusion Net ###############################################
-class Classifier(nn.Module):
-    def __init__(self, n_classes, dropout=0.5):
-        super(Classifier, self).__init__()
-        self.l1 = nn.Linear(208, n_classes)
+# class Classifier(nn.Module):
+#     def __init__(self, n_classes, dropout=0.5):
+#         super(Classifier, self).__init__()
+#         self.l1 = nn.Linear(208, n_classes)
 
-    def forward(self, x):
-        x = self.l1(x)
-        return x
+#     def forward(self, x):
+#         x = self.l1(x)
+#         return x
 
-class Adaptive_Att_FusionNet(Att_FusionNet):
+# class Adaptive_Att_FusionNet(Att_FusionNet):
 
-    def __init__(self, args):
-        Att_FusionNet.__init__(self, args)
+#     def __init__(self, args):
+#         Att_FusionNet.__init__(self, args)
 
-        self.num_scenes = args.num_scenes
+#         self.num_scenes = args.num_scenes
 
-        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
-        self.classifier = Classifier(n_classes=self.num_scenes, dropout=0.5)
+#         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+#         self.classifier = Classifier(n_classes=self.num_scenes, dropout=0.5)
 
-        if args.branch == 'fusion':
-            in_chs = args.channels
-            del self.fusion_cbam0
-            del self.fusion_cbam1
-            del self.fusion_cbam2
-            del self.fusion_cbam3
-            del self.fusion_cbam4
-            for scene in range(self.num_scenes):
-                for level in range(self.config.num_levels):
-                    if self.attention_type=="cbam":
-                        self.add_module("fusion"+str(scene)+"_"+self.attention_type+str(level), CBAMLayer(2*in_chs))
-                    elif self.attention_type=="eca":
-                        self.add_module("fusion"+str(scene)+"_"+self.attention_type+str(level), attention_block(2*in_chs))
-                    elif self.attention_type=="shuffle":
-                        self.add_module("fusion"+str(scene)+"_"+self.attention_type+str(level), shuffle_attention_block(2*in_chs))
-                    else:
-                        raise ValueError('Attention type not supported.')
+#         if args.branch == 'fusion':
+#             in_chs = args.channels
+#             del self.fusion_cbam0
+#             del self.fusion_cbam1
+#             del self.fusion_cbam2
+#             del self.fusion_cbam3
+#             del self.fusion_cbam4
+#             for scene in range(self.num_scenes):
+#                 for level in range(self.config.num_levels):
+#                     if self.attention_type=="cbam":
+#                         self.add_module("fusion"+str(scene)+"_"+self.attention_type+str(level), CBAMLayer(2*in_chs))
+#                     elif self.attention_type=="eca":
+#                         self.add_module("fusion"+str(scene)+"_"+self.attention_type+str(level), attention_block(2*in_chs))
+#                     elif self.attention_type=="shuffle":
+#                         self.add_module("fusion"+str(scene)+"_"+self.attention_type+str(level), shuffle_attention_block(2*in_chs))
+#                     else:
+#                         raise ValueError('Attention type not supported.')
 
-    def forward(self, data_pair, branch='fusion'):
-        thermal_x, rgb_x = data_pair[0], data_pair[1]
+#     def forward(self, data_pair, branch='fusion'):
+#         thermal_x, rgb_x = data_pair[0], data_pair[1]
 
-        class_net = getattr(self, f'{branch}_class_net')
-        box_net = getattr(self, f'{branch}_box_net')
+#         class_net = getattr(self, f'{branch}_class_net')
+#         box_net = getattr(self, f'{branch}_box_net')
         
-        x = None
-        if branch =='fusion':
-            thermal_x = self.thermal_backbone(thermal_x)
-            rgb_x = self.rgb_backbone(rgb_x)
+#         x = None
+#         if branch =='fusion':
+#             thermal_x = self.thermal_backbone(thermal_x)
+#             rgb_x = self.rgb_backbone(rgb_x)
 
-            feat = self.avgpool(rgb_x[len(rgb_x)-1])
-            feat = feat.view(feat.size(0), -1)
-            image_class_out = self.classifier(feat)
-            image_class_out = torch.argmax(image_class_out, dim=1).cpu().numpy()[0]
+#             feat = self.avgpool(rgb_x[len(rgb_x)-1])
+#             feat = feat.view(feat.size(0), -1)
+#             image_class_out = self.classifier(feat)
+#             image_class_out = torch.argmax(image_class_out, dim=1).cpu().numpy()[0]
 
-            thermal_x = self.thermal_fpn(thermal_x)
-            rgb_x = self.rgb_fpn(rgb_x)
+#             thermal_x = self.thermal_fpn(thermal_x)
+#             rgb_x = self.rgb_fpn(rgb_x)
 
-            out = []
-            for i, (tx, vx) in enumerate(zip(thermal_x, rgb_x)):
-                x = torch.cat((tx, vx), dim=1)
-                attention = getattr(self, "fusion"+str(image_class_out)+"_"+self.attention_type+str(i))
-                out.append(attention(x))
-        else:
-            fpn = getattr(self, f'{branch}_fpn')
-            backbone = getattr(self, f'{branch}_backbone')
-            if branch =='thermal':
-                x = thermal_x
-            elif branch =='rgb':
-                x = rgb_x
-            feats = backbone(x)
-            out = fpn(feats)
+#             out = []
+#             for i, (tx, vx) in enumerate(zip(thermal_x, rgb_x)):
+#                 x = torch.cat((tx, vx), dim=1)
+#                 attention = getattr(self, "fusion"+str(image_class_out)+"_"+self.attention_type+str(i))
+#                 out.append(attention(x))
+#         else:
+#             fpn = getattr(self, f'{branch}_fpn')
+#             backbone = getattr(self, f'{branch}_backbone')
+#             if branch =='thermal':
+#                 x = thermal_x
+#             elif branch =='rgb':
+#                 x = rgb_x
+#             feats = backbone(x)
+#             out = fpn(feats)
         
         
-        x_class = class_net(out)
-        x_box = box_net(out)
+#         x_class = class_net(out)
+#         x_box = box_net(out)
 
-        return x_class, x_box
+#         return x_class, x_box
 
 
-##################################### Scene Classifier ###############################################
-class EfficientDetwithCls(EfficientDet):
+# ##################################### Scene Classifier ###############################################
+# class EfficientDetwithCls(EfficientDet):
 
-    def __init__(self, config, pretrained_backbone=True, alternate_init=False):
-        EfficientDet.__init__(self, config, pretrained_backbone, alternate_init)
-        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
-        self.classifier = Classifier(n_classes=config.num_scenes, dropout=0.5)
+#     def __init__(self, config, pretrained_backbone=True, alternate_init=False):
+#         EfficientDet.__init__(self, config, pretrained_backbone, alternate_init)
+#         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+#         self.classifier = Classifier(n_classes=config.num_scenes, dropout=0.5)
 
-        for param in self.backbone.parameters():
-            param.requires_grad = False
-        for param in self.fpn.parameters():
-            param.requires_grad = False
-        for param in self.class_net.parameters():
-            param.requires_grad = False
-        for param in self.box_net.parameters():
-            param.requires_grad = False
+#         for param in self.backbone.parameters():
+#             param.requires_grad = False
+#         for param in self.fpn.parameters():
+#             param.requires_grad = False
+#         for param in self.class_net.parameters():
+#             param.requires_grad = False
+#         for param in self.box_net.parameters():
+#             param.requires_grad = False
 
-    def forward(self, x):
-        x = self.backbone(x)
-        feat = self.avgpool(x[len(x)-1])
-        feat = feat.view(feat.size(0), -1)
-        image_class_out = self.classifier(feat)
+#     def forward(self, x):
+#         x = self.backbone(x)
+#         feat = self.avgpool(x[len(x)-1])
+#         feat = feat.view(feat.size(0), -1)
+#         image_class_out = self.classifier(feat)
 
-        x = self.fpn(x)
-        x_class = self.class_net(x)
-        x_box = self.box_net(x)
-        return x_class, x_box, image_class_out
+#         x = self.fpn(x)
+#         x_class = self.class_net(x)
+#         x_box = self.box_net(x)
+#         return x_class, x_box, image_class_out

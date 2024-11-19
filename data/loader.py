@@ -45,6 +45,10 @@ class DetectionFastCollate:
         thermal_img_tensor = torch.zeros((batch_size, *batch[0][0].shape), dtype=torch.float32)
         rgb_img_tensor = torch.zeros((batch_size, *batch[0][1].shape), dtype=torch.float32)
 
+        # Weights tensors
+        rgb_weights = torch.zeros(batch_size, dtype=torch.float32)
+        thermal_weights = torch.zeros(batch_size, dtype=torch.float32)
+
         for i in range(batch_size):
             thermal_img_tensor[i] += torch.from_numpy(batch[i][0])
             rgb_img_tensor[i] += torch.from_numpy(batch[i][1])
@@ -100,10 +104,15 @@ class DetectionFastCollate:
                     labeler_outputs[f'label_cls_{j}'][i] = ct
                     labeler_outputs[f'label_bbox_{j}'][i] = bt
                 labeler_outputs['label_num_positives'][i] = num_positives
+            
+            # Add weights
+            rgb_weights[i] = batch[i][3]  # rgb_weight
+            thermal_weights[i] = batch[i][4]  # thermal_weight
+
         if labeler_outputs:
             target.update(labeler_outputs)
 
-        return thermal_img_tensor, rgb_img_tensor, target
+        return thermal_img_tensor, rgb_img_tensor, target, rgb_weights, thermal_weights
 
 
 class PrefetchLoader:
@@ -133,18 +142,20 @@ class PrefetchLoader:
         stream = torch.cuda.Stream()
         first = True
 
-        for next_thermal_input, next_rgb_input, next_target in self.loader:
+
+        for next_thermal_input, next_rgb_input, next_target, next_rgb_weight, next_thermal_weight in self.loader:
             with torch.cuda.stream(stream):
                 next_thermal_input = next_thermal_input.cuda(non_blocking=True)
                 next_thermal_input = next_thermal_input.float().sub_(self.thermal_mean).div_(self.thermal_std)
                 next_rgb_input = next_rgb_input.cuda(non_blocking=True)
                 next_rgb_input = next_rgb_input.float().sub_(self.rgb_mean).div_(self.rgb_std)
                 next_target = {k: v.cuda(non_blocking=True) for k, v in next_target.items()}
+
                 if self.random_erasing is not None:
                     next_thermal_input, next_rgb_input = self.random_erasing(next_thermal_input, next_rgb_input, next_target)
 
             if not first:
-                yield thermal_input, rgb_input, target
+                yield thermal_input, rgb_input, target, rgb_weight, thermal_weight
             else:
                 first = False
 
@@ -152,8 +163,10 @@ class PrefetchLoader:
             thermal_input = next_thermal_input
             rgb_input = next_rgb_input
             target = next_target
+            rgb_weight = next_rgb_weight
+            thermal_weight = next_thermal_weight
 
-        yield thermal_input, rgb_input, target
+        yield thermal_input, rgb_input, target, rgb_weight, thermal_weight
 
     def __len__(self):
         return len(self.loader)

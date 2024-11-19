@@ -12,6 +12,7 @@ from PIL import Image
 from effdet.data.parsers import create_parser
 from .parsers import create_parser as create_parser_stf
 import cv2
+import pandas as pd
 
 IMAGENET_DEFAULT_MEAN = (0.485, 0.456, 0.406)
 IMAGENET_DEFAULT_STD = (0.229, 0.224, 0.225)
@@ -26,7 +27,7 @@ class FusionDatasetFLIR(data.Dataset):
         transform (callable, optional): A function/transform that  takes in an PIL image
             and returns a transformed version. E.g, ``transforms.ToTensor``
     """
-    def __init__(self, thermal_data_dir, rgb_data_dir, parser=None, parser_kwargs=None, transform=None):
+    def __init__(self, thermal_data_dir, rgb_data_dir, vlm_csv_path, parser=None, parser_kwargs=None, transform=None):
         super(FusionDatasetFLIR, self).__init__()
         parser_kwargs = parser_kwargs or {}
         self.thermal_data_dir = thermal_data_dir
@@ -37,6 +38,8 @@ class FusionDatasetFLIR(data.Dataset):
             assert parser is not None and len(parser.img_ids)
             self._parser = parser
         self._transform = transform
+        self.weights_data = pd.read_csv(vlm_csv_path)
+    
 
     def __getitem__(self, index):
         """
@@ -60,7 +63,15 @@ class FusionDatasetFLIR(data.Dataset):
         if self.transform is not None:
             thermal_img, rgb_img, target = self.transform(thermal_img, rgb_img, target)
 
-        return thermal_img, rgb_img, target
+        # vlm weight
+        tmp_weights = self.weights_data[self.weights_data['name'] == img_info['file_name'].replace('PreviewData', 'RGB')]
+        if not tmp_weights.empty:
+            rgb_weight = tmp_weights['RGB'].values[0]
+            thermal_weight = tmp_weights['Thermal'].values[0]
+        else:
+            rgb_weight, thermal_weight = 0.7, 0.4  # default values if weights are not found
+
+        return thermal_img, rgb_img, target, rgb_weight, thermal_weight
 
     def __len__(self):
         return len(self._parser.img_ids)
