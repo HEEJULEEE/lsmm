@@ -128,7 +128,7 @@ if __name__ == '__main__':
     model_config = training_bench.config
     input_config = resolve_input_config(args, model_config)
 
-    train_dataset, val_dataset = create_dataset(args.dataset, args.root)
+    train_dataset, val_dataset = create_dataset(args.dataset, args.root,vlm_csv_path = '/content/lsmm/toy_vlm.csv' )
 
     train_dataloader = create_loader(
         train_dataset,
@@ -203,9 +203,9 @@ if __name__ == '__main__':
         for batch in pbar:
             pbar.set_description('Epoch {}/{}'.format(epoch, args.epochs + 1))
 
-            thermal_img_tensor, rgb_img_tensor, target = batch[0], batch[1], batch[2]
+            thermal_img_tensor, rgb_img_tensor, target, rgb_weight, thermal_weight = batch[0], batch[1], batch[2], batch[3], batch[4]
 
-            output = training_bench(thermal_img_tensor, rgb_img_tensor, target, eval_pass=False)
+            output = training_bench(thermal_img_tensor, rgb_img_tensor, target, rgb_weight, thermal_weight, eval_pass=False)
             loss = output['loss']
             train_losses_m.update(loss.item(), thermal_img_tensor.size(0))
             batch_train_loss.append(loss.item())
@@ -224,9 +224,9 @@ if __name__ == '__main__':
             batch_val_loss = []
             for batch in tqdm.tqdm(val_dataloader):
                 pbar.set_description('Validating...')
-                thermal_img_tensor, rgb_img_tensor, target = batch[0], batch[1], batch[2]
+                thermal_img_tensor, rgb_img_tensor, target, rgb_weight, thermal_weight = batch[0], batch[1], batch[2], batch[3], batch[4]
 
-                output = training_bench(thermal_img_tensor, rgb_img_tensor, target, eval_pass=True)
+                output = training_bench(thermal_img_tensor, rgb_img_tensor, target, rgb_weight, thermal_weight, eval_pass=True)
                 loss = output['loss']
                 val_losses_m.update(loss.item(), thermal_img_tensor.size(0))
                 batch_val_loss.append(loss.item())

@@ -112,8 +112,8 @@ class DetBenchTrain(nn.Module):
             self.anchor_labeler = AnchorLabeler(self.anchors, self.num_classes, match_threshold=0.5)
         self.loss_fn = DetectionLoss(model.config)
 
-    def forward(self, x, target: Dict[str, torch.Tensor]):
-        class_out, box_out = self.model(x)
+    def forward(self, x, rgb_weight, thermal_weight, target: Dict[str, torch.Tensor]):
+        class_out, box_out = self.model(x, rgb_weight, thermal_weight)
         if self.anchor_labeler is None:
             # target should contain pre-computed anchor labels if labeler not present in bench
             assert 'label_num_positives' in target
@@ -140,8 +140,8 @@ class DetBenchTrain(nn.Module):
 
 class DetBenchTrainImagePair(DetBenchTrain):
 
-    def forward(self, thermal_img, rgb_img, target: Dict[str, torch.Tensor], eval_pass=False, branch='fusion'):
-        class_out, box_out = self.model([thermal_img, rgb_img], branch=branch)
+    def forward(self, thermal_img, rgb_img, target: Dict[str, torch.Tensor], rgb_weight, thermal_weight, eval_pass=False, branch='fusion'):
+        class_out, box_out = self.model([thermal_img, rgb_img], rgb_weight, thermal_weight, branch=branch)
         if self.anchor_labeler is None:
             # target should contain pre-computed anchor labels if labeler not present in bench
             assert 'label_num_positives' in target
