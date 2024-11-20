@@ -128,7 +128,7 @@ if __name__ == '__main__':
     model_config = training_bench.config
     input_config = resolve_input_config(args, model_config)
 
-    train_dataset, val_dataset = create_dataset(args.dataset, args.root,vlm_csv_path = '/content/lsmm/toy_vlm.csv' )
+    train_dataset, val_dataset = create_dataset(args.dataset, args.root,vlm_csv_path = '/content/lsmm/evaluation_results_toy.csv' )
 
     train_dataloader = create_loader(
         train_dataset,
