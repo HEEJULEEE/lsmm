@@ -128,7 +128,16 @@ if __name__ == '__main__':
     model_config = training_bench.config
     input_config = resolve_input_config(args, model_config)
 
-    train_dataset, val_dataset = create_dataset(args.dataset, args.root,vlm_csv_path = '/content/lsmm/evaluation_results_toy.csv' )
+    #vlm_csv_paths = {'train': '/content/lsmm/evaluation_results_toy.csv', 'val': '/content/lsmm/test_eval_results.csv'}
+    #train_dataset = create_dataset(args.dataset, args.root, vlm_csv_path = '/content/lsmm/evaluation_results_toy.csv' )
+    #val_dataset = create_dataset(args.dataset, args.root, vlm_csv_path = '/content/lsmm/test_eval_results.csv' )
+
+    #data_set = create_dataset(args.dataset, args.root, vlm_csv_path=vlm_csv_paths, splits=('train', 'val'))
+    #print(f"Datasets after create_dataset: {data_set}")
+    #print(f"Type of datasets after create_dataset: {type(data_set)}") 
+    #train_dataset, val_dataset = data_set[0], data_set[1]
+
+    train_dataset, val_dataset = create_dataset(args.dataset, args.root, vlm_csv_path = '/content/lsmm/evaluation_results_toy.csv' )
 
     train_dataloader = create_loader(
         train_dataset,

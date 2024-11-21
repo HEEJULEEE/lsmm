@@ -64,12 +64,14 @@ class FusionDatasetFLIR(data.Dataset):
             thermal_img, rgb_img, target = self.transform(thermal_img, rgb_img, target)
 
         # vlm weight
-        tmp_weights = self.weights_data[self.weights_data['name'] == img_info['file_name'].replace('PreviewData', 'RGB')]
+        base_file_name = img_info['file_name'].split('_')[0] + "_" + img_info['file_name'].split('_')[1]
+        tmp_weights = self.weights_data[self.weights_data['Image Pair'] == base_file_name]
         if not tmp_weights.empty:
-            rgb_weight = tmp_weights['RGB'].values[0]
-            thermal_weight = tmp_weights['Thermal'].values[0]
+            rgb_weight = tmp_weights['RGB Score'].values[0]
+            thermal_weight = tmp_weights['Thermal Score'].values[0]
         else:
-            rgb_weight, thermal_weight = 0.7, 0.4  # default values if weights are not found
+          rgb_weight, thermal_weight = 0.5, 0.5
+          #raise ValueError
 
         return thermal_img, rgb_img, target, rgb_weight, thermal_weight
 

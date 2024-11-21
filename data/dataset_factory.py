@@ -32,12 +32,20 @@ def create_dataset(name, root, vlm_csv_path, splits=('train', 'val')):
                 ann_filename=ann_file,
                 has_labels=split_cfg['has_labels']
             )
-            datasets[s] = dataset_cls(
-                thermal_data_dir=root / Path(split_cfg['img_dir']),
-                rgb_data_dir=root / Path(split_cfg['img_dir'].replace('thermal', 'rgb')),
-                parser=create_parser(dataset_cfg.parser, cfg=parser_cfg),
-                vlm_csv_path=vlm_csv_path
-            )
+            split_vlm_csv_path = vlm_csv_path[s] if isinstance(vlm_csv_path, dict) else vlm_csv_path
+            try:
+                datasets[s] = dataset_cls(
+                    thermal_data_dir=root / Path(split_cfg['img_dir']),
+                    rgb_data_dir=root / Path(split_cfg['img_dir'].replace('thermal', 'rgb')),
+                    parser=create_parser(dataset_cfg.parser, cfg=parser_cfg),
+                    vlm_csv_path=split_vlm_csv_path
+                )
+                print(f"Dataset for {s} created successfully.")
+            except Exception as e:
+                print(f"Error creating dataset for {s}: {e}")
+                raise
+            print(f"Datasets before returning: {datasets}")
+            print(f"Type of datasets: {type(datasets)}")
 
     elif name == 'flir_aligned_day':
         dataset_cls = FusionDatasetFLIR
