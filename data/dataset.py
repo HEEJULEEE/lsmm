@@ -315,7 +315,7 @@ class FusionDatasetM3FD(data.Dataset):
         transform (callable, optional): A function/transform that  takes in an PIL image
             and returns a transformed version. E.g, ``transforms.ToTensor``
     """
-    def __init__(self, thermal_data_dir, rgb_data_dir, parser=None, parser_kwargs=None, transform=None):
+    def __init__(self, thermal_data_dir, rgb_data_dir, vlm_csv_path, parser=None, parser_kwargs=None, transform=None):
         super(FusionDatasetM3FD, self).__init__()
         parser_kwargs = parser_kwargs or {}
         self.thermal_data_dir = thermal_data_dir
@@ -326,6 +326,7 @@ class FusionDatasetM3FD(data.Dataset):
             assert parser is not None and len(parser.img_ids)
             self._parser = parser
         self._transform = transform
+        self.weights_data = pd.read_csv(vlm_csv_path)
 
     def __getitem__(self, index):
         """
@@ -347,7 +348,17 @@ class FusionDatasetM3FD(data.Dataset):
         if self.transform is not None:
             thermal_img, rgb_img, target = self.transform(thermal_img, rgb_img, target)
 
-        return thermal_img, rgb_img, target
+        #vlm weight
+        base_file_name = img_info['file_name'].split('.')[0]
+        tmp_weights = self.weights_data[self.weights_data['Image Pair'] == base_file_name]
+        if not tmp_weights.empty:
+            rgb_weight = tmp_weights['RGB Score'].values[0]
+            thermal_weight = tmp_weights['Thermal Score'].values[0]
+        else:
+          rgb_weight, thermal_weight = 0.5, 0.5
+          #raise ValueError
+          
+        return thermal_img, rgb_img, target, rgb_weight, thermal_weight
 
     def __len__(self):
         return len(self._parser.img_ids)

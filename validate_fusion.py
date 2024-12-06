@@ -16,7 +16,7 @@ from models.detector import DetBenchPredictImagePair
 from data import create_dataset, create_loader, resolve_input_config
 from utils.evaluator import CocoEvaluator
 from utils.evaluator import create_evaluator
-from utils.utils import visualize_detections
+from utils.utils import visualize_detections, visualize_ground_truth
 
 import numpy as np
 
@@ -172,7 +172,7 @@ def validate(args):
     if args.num_gpu > 1:
         bench = torch.nn.DataParallel(bench, device_ids=list(range(args.num_gpu)))
 
-    dataset = create_dataset(args.dataset, args.root,'/content/lsmm/test_eval_results.csv', args.split )
+    dataset = create_dataset(args.dataset, args.root,'/home/tchjlee/lsmm/Image_quality_score/M3FD/evaluation_results_final_m3fd.csv', args.split )
     input_config = resolve_input_config(args, model_config)
     loader = create_loader(
         dataset,
@@ -214,8 +214,14 @@ def validate(args):
                     output = bench(thermal_input, rgb_input, rgb_weight, thermal_weight, img_info=target, branch=args.branch)
             evaluator.add_predictions(output, target)
             # print(output)
-            if args.wandb:
-                visualize_detections(dataset, output, target, wandb, args, 'test')
+            #if args.wandb:
+            # 예시
+            #output_dir = "/home/tchjlee/lsmm/bb_output"
+            #visualize_detections(dataset, output, target, output_dir, args)
+            #visualize_detections(dataset, output, target, wandb, args, 'test')
+            # GT 이미지를 저장할 폴더
+            gt_output_dir = "/home/tchjlee/lsmm/gt_image_m3fd"
+            visualize_ground_truth(dataset, target, gt_output_dir, args)
 
             # measure elapsed time
             batch_time.update(time.time() - end)

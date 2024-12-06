@@ -137,7 +137,7 @@ if __name__ == '__main__':
     #print(f"Type of datasets after create_dataset: {type(data_set)}") 
     #train_dataset, val_dataset = data_set[0], data_set[1]
 
-    train_dataset, val_dataset = create_dataset(args.dataset, args.root, vlm_csv_path = '/content/lsmm/evaluation_results_toy.csv' )
+    train_dataset, val_dataset = create_dataset(args.dataset, args.root, vlm_csv_path = '/home/tchjlee/lsmm/Image_quality_score/M3FD/evaluation_results_final_m3fd.csv' )
 
     train_dataloader = create_loader(
         train_dataset,
@@ -177,7 +177,7 @@ if __name__ == '__main__':
         print('Loaded checkpoint from ', args.checkpoint)
 
     # set up checkpoint saver
-    output_base = args.output if args.output else './output'
+    output_base = args.output if args.output else './output_m3fd'
     exp_name = args.save+"_"+args.dataset.upper()+"_"+args.att_type.upper()
         
 
