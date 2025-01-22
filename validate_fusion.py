@@ -16,7 +16,7 @@ from models.detector import DetBenchPredictImagePair
 from data import create_dataset, create_loader, resolve_input_config
 from utils.evaluator import CocoEvaluator
 from utils.evaluator import create_evaluator
-from utils.utils import visualize_detections, visualize_ground_truth
+from utils.utils import visualize_detections#, visualize_ground_truth
 
 import numpy as np
 

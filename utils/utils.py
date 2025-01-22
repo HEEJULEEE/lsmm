@@ -174,7 +174,7 @@ def visualize_target(dataset, target, wandb, args, split='val', img_tensor=None)
         # log to wandb: raw image, predictions, and dictionary of class labels for each class id
         box_image = wandb.Image(raw_image, boxes = {'gts': {"box_data": gt_boxes, "class_labels" : class_id_to_label}})
         wandb.log({split: box_image})
-
+'''
 def load_checkpoint_selective(net, snapshot, scene=None):
     """
     Restore weights and optimizer (if needed ) for resuming job.
@@ -186,7 +186,7 @@ def load_checkpoint_selective(net, snapshot, scene=None):
     else:
         net = state_restore_selective(net, checkpoint, scene)
 
-    return net
+    return net'''
 '''
 
 def state_restore_selective(net, loaded_dict, scene=None):
@@ -377,7 +377,7 @@ def visualize_detections(dataset, detections, target, wandb, args, split='val', 
 
 import os
 
-def visualize_detections(dataset, detections, target, output_dir, args, split='val', score_threshold=0.5):
+'''def visualize_detections(dataset, detections, target, output_dir, args, split='val', score_threshold=0.5):
     os.makedirs(output_dir, exist_ok=True)  # 출력 디렉토리가 없으면 생성
     class_id_to_label = {int(i): str(i) for i in range(1, args.num_classes + 1)}
     class_id_to_label.update({1: "person", 2: "bicycle", 3: "car"})
@@ -518,7 +518,8 @@ def draw_gt_boxes(img_path, gt_boxes, num_classes, output_path):
 
     # 이미지 저장
     cv2.imwrite(output_path, image)
-    print(f"Saved GT-only image: {output_path}")
+    print(f"Saved GT-only image: {output_path}")'''
+
 class FasterRCNNBoxScoreTarget:
     """ For every original detected bounding box specified in "bounding boxes",
         assign a score on how the current bounding boxes match it,

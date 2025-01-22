@@ -223,10 +223,10 @@ if __name__ == '__main__':
             optimizer.step()
 
             if args.wandb:
-               visualize_target(train_dataset, target, wandb, args, 'train')
+                visualize_target(train_dataset, target, wandb, args, 'train')
 
         train_loss.append(sum(batch_train_loss)/len(batch_train_loss))
-        
+
         training_bench.eval()
         with torch.no_grad():
             pbar = tqdm.tqdm(val_dataloader)
@@ -248,8 +248,13 @@ if __name__ == '__main__':
         if saver is not None:
             best_metric, best_epoch = saver.save_checkpoint(epoch=epoch, metric=evaluator.evaluate())
 
-    # Plotting the training and validation loss curves and saving the plot
+            if args.wandb:
+                checkpoint_path = os.path.join(output_dir, f"checkpoint_epoch_{epoch}.pt")
+                torch.save(training_bench.state_dict(), checkpoint_path)
+                wandb.save(checkpoint_path)
 
+
+    # Plotting the training and validation loss curves and saving the plot
     plt.plot(train_loss, label='Training loss')
     plt.plot(val_loss, label='Validation loss')
     plt.legend(frameon=False)
