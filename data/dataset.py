@@ -45,7 +45,7 @@ class FusionDatasetFLIR(data.Dataset):
         """
         Args:
             index (int): Index
-        Returns:
+        Returns:\
             tuple: Tuple (thermal_image, rgb_image, annotations (target)).
         """
         # print(self._parser.img_infos)
@@ -69,11 +69,15 @@ class FusionDatasetFLIR(data.Dataset):
         if not tmp_weights.empty:
             rgb_weight = tmp_weights['RGB Score'].values[0]
             thermal_weight = tmp_weights['Thermal Score'].values[0]
+            image_weight = tmp_weights['Image Score'].values[0]
+            #print(f"Loaded weights - RGB: {rgb_weight}, Thermal: {thermal_weight} for {base_file_name}")
         else:
-          rgb_weight, thermal_weight = 0.5, 0.5
+          rgb_weight, thermal_weight, image_weight = 0.5, 0.5, 0.5
+          print(f"weights applied for {base_file_name}")
+          #print(f"Default weights applied - RGB: {rgb_weight}, Thermal: {thermal_weight} for {base_file_name}")
           #raise ValueError
 
-        return thermal_img, rgb_img, target, rgb_weight, thermal_weight
+        return thermal_img, rgb_img, target, rgb_weight, thermal_weight, image_weight
 
     def __len__(self):
         return len(self._parser.img_ids)
@@ -90,6 +94,75 @@ class FusionDatasetFLIR(data.Dataset):
     def transform(self, t):
         self._transform = t
 
+class FusionDatasetM3FD(data.Dataset):
+    """ Fusion Dataset for Object Detection. Use with parsers for COCO, VOC, and OpenImages.
+    Args:
+        parser (string, Parser):
+        transform (callable, optional): A function/transform that  takes in an PIL image
+            and returns a transformed version. E.g, ``transforms.ToTensor``
+    """
+    def __init__(self, thermal_data_dir, rgb_data_dir, vlm_csv_path, parser=None, parser_kwargs=None, transform=None):
+        super(FusionDatasetM3FD, self).__init__()
+        parser_kwargs = parser_kwargs or {}
+        self.thermal_data_dir = thermal_data_dir
+        self.rgb_data_dir = rgb_data_dir
+        if isinstance(parser, str):
+            self._parser = create_parser(parser, **parser_kwargs)
+        else:
+            assert parser is not None and len(parser.img_ids)
+            self._parser = parser
+        self._transform = transform
+        self.weights_data = pd.read_csv(vlm_csv_path)
+
+    def __getitem__(self, index):
+        """
+        Args:
+            index (int): Index
+        Returns:
+            tuple: Tuple (thermal_image, rgb_image, annotations (target)).
+        """
+        img_info = self._parser.img_infos[index]
+        target = dict(img_idx=index, img_size=(img_info['width'], img_info['height']))
+        if self._parser.has_labels:
+            ann = self._parser.get_ann_info(index)
+            target.update(ann)
+
+        thermal_img_path = self.thermal_data_dir / img_info['file_name']
+        thermal_img = Image.open(thermal_img_path).convert('RGB')
+        rgb_img_path = self.rgb_data_dir / img_info['file_name']
+        rgb_img = Image.open(rgb_img_path).convert('RGB')
+        if self.transform is not None:
+            thermal_img, rgb_img, target = self.transform(thermal_img, rgb_img, target)
+
+        #vlm weight
+        base_file_name = img_info['file_name'].split('.')[0]
+        tmp_weights = self.weights_data[self.weights_data['Image Pair'] == base_file_name]
+        if not tmp_weights.empty:
+            rgb_weight = tmp_weights['RGB Score'].values[0]
+            thermal_weight = tmp_weights['Thermal Score'].values[0]
+            image_weight = tmp_weights['Image Score'].values[0]
+        else:
+          rgb_weight, thermal_weight = 0.5, 0.5
+          print(f"weights applied for {base_file_name}")
+          #print(f"Default weights applied - RGB: {rgb_weight}, Thermal: {thermal_weight} for {base_file_name}")
+          #raise ValueError
+
+        return thermal_img, rgb_img, target, rgb_weight, thermal_weight, image_weight
+
+    def __len__(self):
+        return len(self._parser.img_ids)
+
+    @property
+    def parser(self):
+        return self._parser
+
+    @property
+    def transform(self):
+        return self._transform
+
+    @transform.setter
+    def transform(self, t):
+        self._transform = t
 
 class XBitDetectionDatset(data.Dataset):
     """`Object Detection Dataset. Use with parsers for COCO, VOC, and OpenImages.
@@ -307,73 +380,6 @@ class XBitFusionDatsetSTF(data.Dataset):
     def transform(self, t):
         self._transform = t
 
-
-class FusionDatasetM3FD(data.Dataset):
-    """ Fusion Dataset for Object Detection. Use with parsers for COCO, VOC, and OpenImages.
-    Args:
-        parser (string, Parser):
-        transform (callable, optional): A function/transform that  takes in an PIL image
-            and returns a transformed version. E.g, ``transforms.ToTensor``
-    """
-    def __init__(self, thermal_data_dir, rgb_data_dir, vlm_csv_path, parser=None, parser_kwargs=None, transform=None):
-        super(FusionDatasetM3FD, self).__init__()
-        parser_kwargs = parser_kwargs or {}
-        self.thermal_data_dir = thermal_data_dir
-        self.rgb_data_dir = rgb_data_dir
-        if isinstance(parser, str):
-            self._parser = create_parser(parser, **parser_kwargs)
-        else:
-            assert parser is not None and len(parser.img_ids)
-            self._parser = parser
-        self._transform = transform
-        self.weights_data = pd.read_csv(vlm_csv_path)
-
-    def __getitem__(self, index):
-        """
-        Args:
-            index (int): Index
-        Returns:
-            tuple: Tuple (thermal_image, rgb_image, annotations (target)).
-        """
-        img_info = self._parser.img_infos[index]
-        target = dict(img_idx=index, img_size=(img_info['width'], img_info['height']))
-        if self._parser.has_labels:
-            ann = self._parser.get_ann_info(index)
-            target.update(ann)
-
-        thermal_img_path = self.thermal_data_dir / img_info['file_name']
-        thermal_img = Image.open(thermal_img_path).convert('RGB')
-        rgb_img_path = self.rgb_data_dir / img_info['file_name']
-        rgb_img = Image.open(rgb_img_path).convert('RGB')
-        if self.transform is not None:
-            thermal_img, rgb_img, target = self.transform(thermal_img, rgb_img, target)
-
-        #vlm weight
-        base_file_name = img_info['file_name'].split('.')[0]
-        tmp_weights = self.weights_data[self.weights_data['Image Pair'] == base_file_name]
-        if not tmp_weights.empty:
-            rgb_weight = tmp_weights['RGB Score'].values[0]
-            thermal_weight = tmp_weights['Thermal Score'].values[0]
-        else:
-          rgb_weight, thermal_weight = 0.5, 0.5
-          #raise ValueError
-          
-        return thermal_img, rgb_img, target, rgb_weight, thermal_weight
-
-    def __len__(self):
-        return len(self._parser.img_ids)
-
-    @property
-    def parser(self):
-        return self._parser
-
-    @property
-    def transform(self):
-        return self._transform
-
-    @transform.setter
-    def transform(self, t):
-        self._transform = t
 
 class DetectionDataset(data.Dataset):
     """`Object Detection Dataset. Use with parsers for COCO, VOC, and OpenImages.

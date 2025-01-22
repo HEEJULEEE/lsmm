@@ -79,7 +79,7 @@ class Att_FusionNet(nn.Module):
                 else:
                     raise ValueError('Attention type not supported.')
 
-    def forward(self, data_pair, rgb_weight, thermal_weight, branch='fusion'):
+    def forward(self, data_pair, rgb_weight, thermal_weight, image_weight, branch='fusion'):
         thermal_x, rgb_x = data_pair[0], data_pair[1]
 
         class_net = getattr(self, f'{branch}_class_net')
@@ -95,12 +95,13 @@ class Att_FusionNet(nn.Module):
 
             out = []
             thermal_weight = thermal_weight.view(-1, 1, 1, 1).to(thermal_x[0].device) 
-            rgb_weight = rgb_weight.view(-1, 1, 1, 1).to(thermal_x[0].device)          
+            rgb_weight = rgb_weight.view(-1, 1, 1, 1).to(thermal_x[0].device)   
+            image_weight = image_weight.view(-1, 1, 1, 1).to(thermal_x[0].device)       
             
             for i, (tx, vx) in enumerate(zip(thermal_x, rgb_x)):
                 x = torch.cat((tx * thermal_weight, vx * rgb_weight), dim=1)
                 attention = getattr(self, "fusion_"+self.attention_type+str(i))
-                out.append(attention(x))
+                out.append(attention(x, image_weight))
         else:
             fpn = getattr(self, f'{branch}_fpn')
             backbone = getattr(self, f'{branch}_backbone')

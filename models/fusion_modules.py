@@ -24,12 +24,12 @@ class CBAMLayer(nn.Module):
         self.combine = nn.Conv2d(channel, int(channel/2), kernel_size=1)
         self.assemble = nn.Conv2d(2, 1, kernel_size=7, stride=1, padding=3)
 
-    def forward(self, x):
-        x = self._forward_se(x)
-        x = self._forward_spatial(x)
+    def forward(self, x, image_weight):
+        x = self._forward_se(x, image_weight)
+        x = self._forward_spatial(x, image_weight)
         return x
 
-    def _forward_se(self, x):
+    def _forward_se(self, x, image_weight):
         # Channel attention module (SE with max-pool and average-pool)
         b, c, _, _ = x.size()
         x_avg = self.fc(self.avg_pool(x).view(b, c)).view(b, c, 1, 1)
@@ -47,16 +47,16 @@ class CBAMLayer(nn.Module):
         # plt.setp(markerline2, 'color', 'crimson', 'markerfacecolor', 'crimson', 'mec', 'crimson')
         # plt.savefig('cam/{i}.png'.format(i=x.shape[-2]))
 
-        return self.combine(x * y)
+        return self.combine(x * y * image_weight.view(b, 1, 1, 1))
 
-    def _forward_spatial(self, x):
+    def _forward_spatial(self, x, image_weight):
         # Spatial attention module
         x_avg = torch.mean(x, 1, True)
         x_max, _ = torch.max(x, 1, True)
         y = torch.cat((x_avg, x_max), 1)
         y = torch.sigmoid(self.assemble(y))
 
-        return x * y
+        return x * y * image_weight.view(-1, 1, 1, 1)
     
 
 
@@ -88,6 +88,7 @@ class channel_attention_block(nn.Module):
 
     def forward(self,x):
 
+        image_weight = image_weight.view(-1, 1, 1, 1)
         channel_att_sum = None
 
         for pool_type in self.pool_types:
@@ -111,7 +112,7 @@ class channel_attention_block(nn.Module):
 
         gate = self.sigmoid(channel_att_sum).expand_as(x)
 
-        return self.combine(x*gate)
+        return self.combine(x * gate * image_weight)
     
     
     def channel_att_kernel_calc(self,num_channels,gamma=2,b=1):
@@ -223,7 +224,7 @@ class shuffle_attention_block(nn.Module):
 
         return x
 
-    def forward(self, x):
+    def forward(self, x, image_weight):
         
         
         b, c, h, w = x.shape
@@ -250,6 +251,5 @@ class shuffle_attention_block(nn.Module):
         out = self.channel_shuffle(out, 2)
         
         # Reduce the Channels
-        out = self.combine(out)
-        
+        out = self.combine(out * image_weight.view(-1, 1, 1, 1))
         return out

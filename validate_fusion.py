@@ -172,7 +172,7 @@ def validate(args):
     if args.num_gpu > 1:
         bench = torch.nn.DataParallel(bench, device_ids=list(range(args.num_gpu)))
 
-    dataset = create_dataset(args.dataset, args.root,'/home/tchjlee/lsmm/Image_quality_score/M3FD/evaluation_results_final_m3fd.csv', args.split )
+    dataset = create_dataset(args.dataset, args.root,'/home/tchjlee/lsmm/Image_quality_score/FLIR/evaluation_results_flir_with_score.csv', args.split )
     input_config = resolve_input_config(args, model_config)
     loader = create_loader(
         dataset,
@@ -201,27 +201,27 @@ def validate(args):
         config = dict()
         config.update({arg: getattr(args, arg) for arg in vars(args)})
         wandb.init(
-          project='wacv2024',
+          project='deep-sensor-fusion-cbam',
           config=config
         )
 
     with torch.no_grad():
-        for i, (thermal_input, rgb_input, target, rgb_weight, thermal_weight) in enumerate(loader):
+        for i, (thermal_input, rgb_input, target, rgb_weight, thermal_weight, image_weight) in enumerate(loader):
             with amp_autocast():
                 if args.branch == 'single':
                     output = bench(thermal_input, img_info=target)
                 else:
-                    output = bench(thermal_input, rgb_input, rgb_weight, thermal_weight, img_info=target, branch=args.branch)
+                    output = bench(thermal_input, rgb_input, rgb_weight, thermal_weight, image_weight, img_info=target, branch=args.branch)
             evaluator.add_predictions(output, target)
-            # print(output)
+            print(output)
             #if args.wandb:
             # 예시
             #output_dir = "/home/tchjlee/lsmm/bb_output"
             #visualize_detections(dataset, output, target, output_dir, args)
             #visualize_detections(dataset, output, target, wandb, args, 'test')
             # GT 이미지를 저장할 폴더
-            gt_output_dir = "/home/tchjlee/lsmm/gt_image_m3fd"
-            visualize_ground_truth(dataset, target, gt_output_dir, args)
+            #gt_output_dir = "/home/tchjlee/lsmm/gt_image_m3fd"
+            #visualize_ground_truth(dataset, target, gt_output_dir, args)
 
             # measure elapsed time
             batch_time.update(time.time() - end)
