@@ -69,15 +69,14 @@ class FusionDatasetFLIR(data.Dataset):
         if not tmp_weights.empty:
             rgb_weight = tmp_weights['RGB Score'].values[0]
             thermal_weight = tmp_weights['Thermal Score'].values[0]
-            image_weight = tmp_weights['Image Score'].values[0]
+            #image_weight = tmp_weights['Image Score'].values[0]
             #print(f"Loaded weights - RGB: {rgb_weight}, Thermal: {thermal_weight} for {base_file_name}")
         else:
-          rgb_weight, thermal_weight, image_weight = 0.5, 0.5, 0.5
-          print(f"weights applied for {base_file_name}")
+          rgb_weight, thermal_weight= 0.5, 0.5
           #print(f"Default weights applied - RGB: {rgb_weight}, Thermal: {thermal_weight} for {base_file_name}")
           #raise ValueError
 
-        return thermal_img, rgb_img, target, rgb_weight, thermal_weight, image_weight
+        return thermal_img, rgb_img, target, rgb_weight, thermal_weight
 
     def __len__(self):
         return len(self._parser.img_ids)
@@ -140,14 +139,14 @@ class FusionDatasetM3FD(data.Dataset):
         if not tmp_weights.empty:
             rgb_weight = tmp_weights['RGB Score'].values[0]
             thermal_weight = tmp_weights['Thermal Score'].values[0]
-            image_weight = tmp_weights['Image Score'].values[0]
+            #image_weight = tmp_weights['Image Score'].values[0]
         else:
           rgb_weight, thermal_weight = 0.5, 0.5
           print(f"weights applied for {base_file_name}")
           #print(f"Default weights applied - RGB: {rgb_weight}, Thermal: {thermal_weight} for {base_file_name}")
           #raise ValueError
 
-        return thermal_img, rgb_img, target, rgb_weight, thermal_weight, image_weight
+        return thermal_img, rgb_img, target, rgb_weight, thermal_weight
 
     def __len__(self):
         return len(self._parser.img_ids)

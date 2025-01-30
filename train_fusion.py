@@ -137,7 +137,7 @@ if __name__ == '__main__':
     #print(f"Type of datasets after create_dataset: {type(data_set)}") 
     #train_dataset, val_dataset = data_set[0], data_set[1]
 
-    train_dataset, val_dataset = create_dataset(args.dataset, args.root, vlm_csv_path = '/home/tchjlee/lsmm/Image_quality_score/FLIR/evaluation_results_flir_with_score.csv' )
+    train_dataset, val_dataset = create_dataset(args.dataset, args.root, vlm_csv_path = '/home/tchjlee/lsmm/Image_quality_score/FLIR/evaluation_results_flir.csv' )
 
     train_dataloader = create_loader(
         train_dataset,
@@ -212,9 +212,9 @@ if __name__ == '__main__':
         for batch in pbar:
             pbar.set_description('Epoch {}/{}'.format(epoch, args.epochs + 1))
 
-            thermal_img_tensor, rgb_img_tensor, target, rgb_weight, thermal_weight, image_weight = batch[0], batch[1], batch[2], batch[3], batch[4], batch[5]
+            thermal_img_tensor, rgb_img_tensor, target, rgb_weight, thermal_weight = batch[0], batch[1], batch[2], batch[3], batch[4]
 
-            output = training_bench(thermal_img_tensor, rgb_img_tensor, target, rgb_weight, thermal_weight, image_weight, eval_pass=False)
+            output = training_bench(thermal_img_tensor, rgb_img_tensor, target, rgb_weight, thermal_weight, eval_pass=False)
             loss = output['loss']
             train_losses_m.update(loss.item(), thermal_img_tensor.size(0))
             batch_train_loss.append(loss.item())
@@ -233,9 +233,9 @@ if __name__ == '__main__':
             batch_val_loss = []
             for batch in tqdm.tqdm(val_dataloader):
                 pbar.set_description('Validating...')
-                thermal_img_tensor, rgb_img_tensor, target, rgb_weight, thermal_weight, image_weight = batch[0], batch[1], batch[2], batch[3], batch[4], batch[5]
+                thermal_img_tensor, rgb_img_tensor, target, rgb_weight, thermal_weight = batch[0], batch[1], batch[2], batch[3], batch[4]
 
-                output = training_bench(thermal_img_tensor, rgb_img_tensor, target, rgb_weight, thermal_weight, image_weight, eval_pass=True)
+                output = training_bench(thermal_img_tensor, rgb_img_tensor, target, rgb_weight, thermal_weight, eval_pass=True)
                 loss = output['loss']
                 val_losses_m.update(loss.item(), thermal_img_tensor.size(0))
                 batch_val_loss.append(loss.item())
@@ -248,10 +248,14 @@ if __name__ == '__main__':
         if saver is not None:
             best_metric, best_epoch = saver.save_checkpoint(epoch=epoch, metric=evaluator.evaluate())
 
-            if args.wandb:
-                checkpoint_path = os.path.join(output_dir, f"checkpoint_epoch_{epoch}.pt")
+            if args.wandb and best_epoch == epoch:
+                checkpoint_path = os.path.join(output_dir, "best.pt")
                 torch.save(training_bench.state_dict(), checkpoint_path)
                 wandb.save(checkpoint_path)
+            '''if args.wandb:
+                checkpoint_path = os.path.join(output_dir, f"checkpoint_epoch_{epoch}.pt")
+                torch.save(training_bench.state_dict(), checkpoint_path)
+                wandb.save(checkpoint_path)'''
 
 
     # Plotting the training and validation loss curves and saving the plot
