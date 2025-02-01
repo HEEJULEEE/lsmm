@@ -137,7 +137,7 @@ if __name__ == '__main__':
     #print(f"Type of datasets after create_dataset: {type(data_set)}") 
     #train_dataset, val_dataset = data_set[0], data_set[1]
 
-    train_dataset, val_dataset = create_dataset(args.dataset, args.root, vlm_csv_path = '/home/tchjlee/lsmm/Image_quality_score/FLIR/evaluation_results_flir.csv' )
+    train_dataset, val_dataset = create_dataset(args.dataset, args.root, vlm_csv_path = '/home/tchjlee/lsmm/Image_quality_score/prompt_hj_evaluation_results.csv' )
 
     train_dataloader = create_loader(
         train_dataset,

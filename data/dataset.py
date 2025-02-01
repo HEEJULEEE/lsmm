@@ -18,8 +18,6 @@ IMAGENET_DEFAULT_MEAN = (0.485, 0.456, 0.406)
 IMAGENET_DEFAULT_STD = (0.229, 0.224, 0.225)
 
 
-
-
 class FusionDatasetFLIR(data.Dataset):
     """ Fusion Dataset for Object Detection. Use with parsers for COCO, VOC, and OpenImages.
     Args:
@@ -73,7 +71,7 @@ class FusionDatasetFLIR(data.Dataset):
             #print(f"Loaded weights - RGB: {rgb_weight}, Thermal: {thermal_weight} for {base_file_name}")
         else:
           rgb_weight, thermal_weight= 0.5, 0.5
-          #print(f"Default weights applied - RGB: {rgb_weight}, Thermal: {thermal_weight} for {base_file_name}")
+          print(f"Default weights applied for {base_file_name}")
           #raise ValueError
 
         return thermal_img, rgb_img, target, rgb_weight, thermal_weight
