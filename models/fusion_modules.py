@@ -6,11 +6,13 @@ from sklearn.preprocessing import normalize
 
 import numpy as np
 import matplotlib.pyplot as plt
+import os
+import cv2
 
 ################################################# CBAM ############################################################
 class CBAMLayer(nn.Module):
 
-    def __init__(self, channel, reduction=16):
+    def __init__(self, channel, reduction=16, save_path=None):
         super(CBAMLayer, self).__init__()
 
         self.avg_pool = nn.AdaptiveAvgPool2d(1)
@@ -24,6 +26,9 @@ class CBAMLayer(nn.Module):
         self.combine = nn.Conv2d(channel, int(channel/2), kernel_size=1)
         self.assemble = nn.Conv2d(2, 1, kernel_size=7, stride=1, padding=3)
 
+        self.attention_maps={"channel_attention": [], "spatial_attention": []}
+        self.save_path = save_path
+
     def forward(self, x):
         x = self._forward_se(x)
         x = self._forward_spatial(x)
@@ -36,6 +41,11 @@ class CBAMLayer(nn.Module):
         x_max = self.fc(self.max_pool(x).view(b, c)).view(b, c, 1, 1)
 
         y = torch.sigmoid(x_avg + x_max)
+        
+        if y is None or y.shape[0] == 0:
+            print("[DEBUG] Warning: Channel Attention Map is empty!")
+
+        self.attention_maps["channel_attention"].append(y.detach().cpu())
 
         # plot_y = y[0,:,0,0].cpu().numpy()
         # plot_y = (plot_y - np.nanmin(plot_y)) / (np.nanmax(plot_y) - np.nanmin(plot_y))
@@ -56,11 +66,113 @@ class CBAMLayer(nn.Module):
         y = torch.cat((x_avg, x_max), 1)
         y = torch.sigmoid(self.assemble(y))
 
+        self.attention_maps["spatial_attention"].append(y.detach().cpu())
+
         return x * y
     
+    def save_attention_maps(self, img, epoch, save_path):
+        if self.save_path is None:
+            print(f"[DEBUG] save_path is None. Skipping saving attention maps.")
+            return
 
+        os.makedirs(save_path, exist_ok=True)
+        print(f"[DEBUG] Saving CBAM Attention Map at {save_path}")
 
+        if "channel_attention" in self.attention_maps and len(self.attention_maps["channel_attention"]) > 0:
+            attn_map = self.attention_maps["channel_attention"][0].cpu().numpy()
+            print(f"[DEBUG] Channel Attention shape: {attn_map.shape}")
+            
+            attn_map = attn_map.mean(axis=0).squeeze()
+            print(f"[DEBUG] Processed Channel Attention shape: {attn_map.shape}")
 
+            plt.figure(figsize=(12, 3))
+            plt.plot(attn_map, color="blue")
+            plt.title(f"Channel Attention (Epoch {epoch})")
+            plt.xlabel("Channel Index")
+            plt.ylabel("Attention Weight")
+            plt.grid()
+            plt.savefig(os.path.join(save_path, f"channel_attention_epoch_{epoch}.png"))
+            plt.close()
+        else:
+            print(f"[WARNING] No channel_attention found for saving!")
+
+        if "spatial_attention" in self.attention_maps and len(self.attention_maps["spatial_attention"]) > 0:
+            attn_map = self.attention_maps["spatial_attention"][0].cpu().numpy()  
+            print(f"[DEBUG] Spatial Attention shape: {attn_map.shape}")
+
+            attn_map = attn_map.mean(axis=0)
+            
+            if attn_map.shape[0] == 1:
+                attn_map = attn_map.squeeze(0)
+                
+            min_val = np.min(attn_map)
+            max_val = np.max(attn_map)
+            if max_val - min_val > 1e-8:  # 값이 같은 경우 방지
+                attn_map = (attn_map - min_val) / (max_val - min_val + 1e-8)
+            else:
+                attn_map = np.zeros_like(attn_map)
+                
+            print(f"[DEBUG] Spatial Attention shape after processing: {attn_map.shape}")
+            
+            h, w = img.shape[:2]
+            if attn_map.shape != (h, w):  # OpenCV 에러 방지
+                attn_resized = cv2.resize(attn_map, (w, h))
+            else:
+                attn_resized = attn_map 
+
+            attn_colormap = cv2.applyColorMap(np.uint8(255 * attn_resized), cv2.COLORMAP_JET)
+            blended = cv2.addWeighted(img, 0.5, attn_colormap, 0.5, 0)
+
+            save_filename = os.path.join(save_path, f"applied_cbam_epoch_{epoch}.jpg")
+            cv2.imwrite(save_filename, blended)
+        else:
+            print(f"[WARNING] No spatial_attention found for saving!")
+
+        print(f"[INFO] Saved CBAM Overlay & Channel Attention (Epoch {epoch}) at {save_path}")
+        
+################################### ResBlock_CBAM #####################################
+class ResBlock_CBAM(nn.Module):
+    def __init__(self, in_places, places, stride=1, downsampling=False, expansion=1):
+        super(ResBlock_CBAM, self).__init__()
+        self.expansion = expansion
+        self.downsampling = downsampling
+
+        self.bottleneck = nn.Sequential(
+            nn.Conv2d(in_channels=in_places, out_channels=places, kernel_size=1, stride=1, bias=False),
+            nn.BatchNorm2d(places),
+            nn.LeakyReLU(0.1, inplace=True),
+            nn.Conv2d(in_channels=places, out_channels=places, kernel_size=3, stride=stride, padding=1, bias=False),
+            nn.BatchNorm2d(places),
+            nn.LeakyReLU(0.1, inplace=True),
+            nn.Conv2d(in_channels=places, out_channels=places * self.expansion, kernel_size=1, stride=1, bias=False),
+            nn.BatchNorm2d(places * self.expansion),
+        )
+
+        # CBAM 적용
+        self.cbam = CBAMLayer(channel = places * self.expansion)
+
+        if self.downsampling:
+            self.downsample = nn.Sequential(
+                nn.Conv2d(in_channels=in_places, out_channels=places * self.expansion, kernel_size=1, stride=stride, bias=False),
+                nn.BatchNorm2d(places * self.expansion)
+            )
+
+        self.relu = nn.ReLU(inplace=True)
+
+    def forward(self, x):
+        residual = x
+        out = self.bottleneck(x)
+        out = self.cbam(out)
+
+        if self.downsampling:
+            residual = self.downsample(x)
+        else:
+            if residual.shape[1] != out.shape[1]:
+                residual = nn.Conv2d(residual.shape[1], out.shape[1], kernel_size=1, stride=1, bias=False).to(residual.device)(residual)
+
+        out += residual
+        out = self.relu(out)
+        return out
 ################################### ECA Attention #####################################
 
 class channel_attention_block(nn.Module):
@@ -111,7 +223,7 @@ class channel_attention_block(nn.Module):
 
         gate = self.sigmoid(channel_att_sum).expand_as(x)
 
-        return self.combine(x * gate)
+        return self.combine(x*gate)
     
     
     def channel_att_kernel_calc(self,num_channels,gamma=2,b=1):
@@ -121,7 +233,6 @@ class channel_attention_block(nn.Module):
         k = t if t%2 else t+1
         
         return k
-
 
 class BasicConv(nn.Module):
     def __init__(self, in_planes, out_planes, kernel_size, stride=1, padding=0, dilation=1, groups=1, relu=True, bn=True, bias=False):
@@ -139,12 +250,9 @@ class BasicConv(nn.Module):
             x = self.relu(x)
         return x
 
-
 class ChannelPool(nn.Module):
     def forward(self, x):
         return torch.cat( (torch.max(x,1)[0].unsqueeze(1), torch.mean(x,1).unsqueeze(1)), dim=1 )
-
-
 
 class spatial_attention_block(nn.Module):
 
@@ -251,4 +359,5 @@ class shuffle_attention_block(nn.Module):
         
         # Reduce the Channels
         out = self.combine(out)
+        
         return out

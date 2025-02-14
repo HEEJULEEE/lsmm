@@ -14,6 +14,11 @@ from utils.utils import visualize_detections, visualize_target
 
 import matplotlib.pyplot as plt
 import numpy as np
+import torch
+import gc
+
+torch.cuda.empty_cache()
+gc.collect()
 
 def count_parameters(model):
     return sum(np.prod(v.size()) for name, v in model.named_parameters() if "auxiliary" not in name)
@@ -119,6 +124,7 @@ if __name__ == '__main__':
     total_trainable_params = sum(p.numel() for p in training_bench.parameters() if p.requires_grad)
     total_params = sum(p.numel() for p in training_bench.parameters())
     print('Total Parameters: {:,} \nTotal Trainable: {:,}\n'.format(total_params, total_trainable_params))
+    print("Available model attributes:", dir(training_bench.model))
     print("*"*50)
 
     training_bench.cuda()
@@ -137,7 +143,7 @@ if __name__ == '__main__':
     #print(f"Type of datasets after create_dataset: {type(data_set)}") 
     #train_dataset, val_dataset = data_set[0], data_set[1]
 
-    train_dataset, val_dataset = create_dataset(args.dataset, args.root, vlm_csv_path = '/home/tchjlee/lsmm/Image_quality_score/prompt_hj_evaluation_results.csv' )
+    train_dataset, val_dataset = create_dataset(args.dataset, args.root, vlm_csv_path = '/home/huiju5701/lsmm/Image_quality_score/FLIR/prompt_gt_evaluation_results.csv' )
 
     train_dataloader = create_loader(
         train_dataset,
@@ -182,6 +188,8 @@ if __name__ == '__main__':
         
 
     output_dir = get_outdir(output_base, 'train_flir', exp_name)
+    cbam_save_path = os.path.join(output_dir, "cbam_visualization")
+
     saver = CheckpointSaver(
         net, optimizer, args=args, checkpoint_dir=output_dir)
 
@@ -244,7 +252,30 @@ if __name__ == '__main__':
                     visualize_detections(val_dataset, output['detections'], target, wandb, args, 'val')
 
             val_loss.append(sum(batch_val_loss)/len(batch_val_loss))
+            
+        if epoch == 1 or epoch % 10 == 0:
+            with torch.no_grad():
+                sample_img = rgb_img_tensor[0].cpu().numpy().transpose(1, 2, 0)  
+                sample_img = (sample_img * 255).astype(np.uint8)  
 
+                print(f"[DEBUG] Epoch {epoch}: Checking CBAM layers...")
+                for i in range(5):  # CBAM 레이어는 5개 존재
+                    cbam_layer = getattr(training_bench.model, f"fusion_cbam{i}", None)
+                    if cbam_layer:
+                        cbam_layer.save_path = cbam_save_path
+                        print(f"[DEBUG] Found CBAM layer: fusion_cbam{i}, Saving attention maps...")
+                        
+                        # CBAM 내부 attention_maps가 비어있는지 확인
+                        if len(cbam_layer.attention_maps["channel_attention"]) == 0:
+                            print(f"[WARNING] CBAM Layer fusion_cbam{i} has EMPTY channel_attention!")
+                        if len(cbam_layer.attention_maps["spatial_attention"]) == 0:
+                            print(f"[WARNING] CBAM Layer fusion_cbam{i} has EMPTY spatial_attention!")
+                        
+                        # Attention Map 저장
+                        cbam_layer.save_attention_maps(sample_img, epoch, save_path=os.path.join(output_dir, f"cbam_visualization/layer_{i}"))
+                    else:
+                        print(f"[ERROR] fusion_cbam{i} NOT FOUND in model!")
+                        
         if saver is not None:
             best_metric, best_epoch = saver.save_checkpoint(epoch=epoch, metric=evaluator.evaluate())
 
