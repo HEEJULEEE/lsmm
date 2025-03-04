@@ -109,7 +109,7 @@ class FusionDatasetM3FD(data.Dataset):
             assert parser is not None and len(parser.img_ids)
             self._parser = parser
         self._transform = transform
-        self.weights_data = pd.read_csv(vlm_csv_path)
+        self.weights_data = pd.read_csv(vlm_csv_path, dtype={'Image Pair': str, 'RGB Score': float, 'Thermal Score': float})
 
     def __getitem__(self, index):
         """
@@ -134,6 +134,7 @@ class FusionDatasetM3FD(data.Dataset):
         #vlm weight
         base_file_name = img_info['file_name'].split('.')[0]
         tmp_weights = self.weights_data[self.weights_data['Image Pair'] == base_file_name]
+        
         if not tmp_weights.empty:
             rgb_weight = tmp_weights['RGB Score'].values[0]
             thermal_weight = tmp_weights['Thermal Score'].values[0]

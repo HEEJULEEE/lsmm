@@ -143,7 +143,7 @@ if __name__ == '__main__':
     #print(f"Type of datasets after create_dataset: {type(data_set)}") 
     #train_dataset, val_dataset = data_set[0], data_set[1]
 
-    train_dataset, val_dataset = create_dataset(args.dataset, args.root, vlm_csv_path = '/home/huiju5701/lsmm/Image_quality_score/FLIR/prompt_gt_evaluation_results.csv' )
+    train_dataset, val_dataset = create_dataset(args.dataset, args.root, vlm_csv_path = '/home/amyhjleee1019/lsmm/Image_quality_score/M3FD/m3fd_prompt_hk_results.csv' )
 
     train_dataloader = create_loader(
         train_dataset,
@@ -199,7 +199,7 @@ if __name__ == '__main__':
         config = dict()
         config.update({arg: getattr(args, arg) for arg in vars(args)})
         wandb.init(
-          project='deep-sensor-fusion-'+args.att_type,
+          project='RGBX_FUSION'+args.att_type,
           config=config
         )
 
@@ -233,6 +233,7 @@ if __name__ == '__main__':
             if args.wandb:
                 visualize_target(train_dataset, target, wandb, args, 'train')
 
+        train_loss_epoch = sum(batch_train_loss) / len(batch_train_loss)
         train_loss.append(sum(batch_train_loss)/len(batch_train_loss))
 
         training_bench.eval()
@@ -250,9 +251,12 @@ if __name__ == '__main__':
                 evaluator.add_predictions(output['detections'], target)
                 if args.wandb and epoch == args.epochs:
                     visualize_detections(val_dataset, output['detections'], target, wandb, args, 'val')
-
+            val_loss_epoch = sum(batch_val_loss) / len(batch_val_loss)
             val_loss.append(sum(batch_val_loss)/len(batch_val_loss))
-            
+        
+        if args.wandb:
+            wandb.log({"train_loss": train_loss_epoch, "val_loss": val_loss_epoch, "epoch": epoch}) 
+               
         if epoch == 1 or epoch % 10 == 0:
             with torch.no_grad():
                 sample_img = rgb_img_tensor[0].cpu().numpy().transpose(1, 2, 0)  
@@ -279,14 +283,8 @@ if __name__ == '__main__':
         if saver is not None:
             best_metric, best_epoch = saver.save_checkpoint(epoch=epoch, metric=evaluator.evaluate())
 
-            if args.wandb and best_epoch == epoch:
-                checkpoint_path = os.path.join(output_dir, "best.pt")
-                torch.save(training_bench.state_dict(), checkpoint_path)
-                wandb.save(checkpoint_path)
-            '''if args.wandb:
-                checkpoint_path = os.path.join(output_dir, f"checkpoint_epoch_{epoch}.pt")
-                torch.save(training_bench.state_dict(), checkpoint_path)
-                wandb.save(checkpoint_path)'''
+        if args.wandb:
+            wandb.save = lambda *args, **kwargs: None 
 
 
     # Plotting the training and validation loss curves and saving the plot
