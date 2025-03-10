@@ -17,7 +17,96 @@ import pandas as pd
 IMAGENET_DEFAULT_MEAN = (0.485, 0.456, 0.406)
 IMAGENET_DEFAULT_STD = (0.229, 0.224, 0.225)
 
+class FusionDatasetFire(data.Dataset):
+    """ Fusion Dataset for Object Detection. Use with parsers for COCO, VOC, and OpenImages.
+    Args:
+        parser (string, Parser):
+        transform (callable, optional): A function/transform that  takes in an PIL image
+            and returns a transformed version. E.g, ``transforms.ToTensor``
+    """
+    def __init__(self, thermal_data_dir, rgb_data_dir, vlm_csv_path=None, parser=None, parser_kwargs=None, transform=None):
+        super(FusionDatasetFire, self).__init__()
+        parser_kwargs = parser_kwargs or {}
+        self.thermal_data_dir = thermal_data_dir
+        self.rgb_data_dir = rgb_data_dir
+        
+        # COCO/VOC 파서 설정
+        if isinstance(parser, str):
+            self._parser = create_parser(parser, **parser_kwargs)
+        else:
+            assert parser is not None and len(parser.img_ids)
+            self._parser = parser
 
+        self._transform = transform
+        
+        # VLM CSV 파일 로드 (dtype 지정)
+        #self.weights_data = pd.read_csv(vlm_csv_path)
+        if vlm_csv_path:
+            self.weights_data = pd.read_csv(vlm_csv_path)
+        else:
+            self.weights_data = None
+
+    def __getitem__(self, index):
+        """
+        Args:
+            index (int): Index
+        Returns:
+            tuple: Tuple (thermal_image, rgb_image, annotations (target)).
+        """
+        img_info = self._parser.img_infos[index]
+        target = dict(img_idx=index, img_size=(img_info['width'], img_info['height']))
+        
+        if self._parser.has_labels:
+            ann = self._parser.get_ann_info(index)
+            target.update(ann)
+
+        # Thermal 이미지 경로 설정
+        thermal_img_path = self.thermal_data_dir / img_info['file_name']
+        thermal_img = Image.open(thermal_img_path).convert('RGB')
+        
+        # RGB 이미지 경로 설정
+        rgb_img_path = self.rgb_data_dir/img_info['file_name'].replace('.jpg', '-Visual.jpeg')   
+
+        # 이미지 로드
+        rgb_img = Image.open(rgb_img_path).convert('RGB')
+        
+        if self._transform is not None:
+            thermal_img, rgb_img, target = self.transform(thermal_img, rgb_img, target)
+
+        # 🔥 VLM Weight 적용 (FLIR2317)
+        file_name_parts = img_info['file_name'].split('_')
+
+        # 만약 언더스코어("_")가 없는 경우 예외 처리
+        if len(file_name_parts) < 2:
+            base_file_name = file_name_parts[0].split('.')[0]  # 확장자 제거 (e.g., "FLIR2483")
+        else:
+            base_file_name = file_name_parts[0] + "_" + file_name_parts[1]
+        tmp_weights = self.weights_data[self.weights_data['Image Pair'] == base_file_name]
+
+        if not tmp_weights.empty:
+            rgb_weight = float(tmp_weights['RGB Score'].values[0])
+            thermal_weight = float(tmp_weights['Thermal Score'].values[0])
+        else:
+            rgb_weight, thermal_weight = 0.5, 0.5
+            print(f"🔥 Default weights applied for {base_file_name}")
+
+        return thermal_img, rgb_img, target, rgb_weight, thermal_weight
+
+    def __len__(self):
+        return len(self._parser.img_ids)
+
+    @property
+    def parser(self):
+        return self._parser
+
+    @property
+    def transform(self):
+        return self._transform
+
+    @transform.setter
+    def transform(self, t):
+        self._transform = t
+        
 class FusionDatasetFLIR(data.Dataset):
     """ Fusion Dataset for Object Detection. Use with parsers for COCO, VOC, and OpenImages.
     Args:
@@ -43,8 +132,8 @@ class FusionDatasetFLIR(data.Dataset):
         """
         Args:
             index (int): Index
-        Returns:\
-            tuple: Tuple (thermal_image, rgb_image, annotations (target)).
+        Returns:
+            tuple: Tuple ( thermal_image, rgb_image, annotations (target)).
         """
         # print(self._parser.img_infos)
         # index = 41

@@ -5,7 +5,34 @@ from typing import Dict
 from effdet.data.dataset_config import *
 
 
+# FIRE Dataset
+@dataclass
+class FireCfg(CocoCfg):
+    variant: str = ''
+    splits: Dict[str, dict] = field(default_factory=lambda: dict(
+        train=dict(ann_filename='meta/thermal_train.json', img_dir='thermal_train/', has_labels=True),
+        val=dict(ann_filename='meta/thermal_test.json', img_dir='thermal_test/', has_labels=True),
+        test=dict(ann_filename='meta/thermal_test.json', img_dir='thermal_test/', has_labels=True),
+    ))
+    
+@dataclass
+class FireAlignedThermalCfg(CocoCfg):
+    variant: str = ''
+    splits: Dict[str, dict] = field(default_factory=lambda: dict(
+        train=dict(ann_filename='meta/thermal_train.json', img_dir='thermal_train/', has_labels=True),
+        val=dict(ann_filename='meta/thermal_test.json', img_dir='thermal_test/', has_labels=True),
+        test=dict(ann_filename='meta/thermal_test.json', img_dir='thermal_test/', has_labels=True),
+    ))
 
+@dataclass
+class FireAlignedRGBCfg(CocoCfg):
+    variant: str = ''
+    splits: Dict[str, dict] = field(default_factory=lambda: dict(
+        train=dict(ann_filename='meta/rgb_train.json', img_dir='rgb_train/', has_labels=True),
+        val=dict(ann_filename='meta/rgb_test.json', img_dir='rgb_test/', has_labels=True),
+        test=dict(ann_filename='meta/rgb_test.json', img_dir='rgb_test/', has_labels=True),
+    ))
+      
 # FLIR-Aligned Dataset
 @dataclass
 class FlirAlignedFullCfg(CocoCfg):
@@ -15,7 +42,6 @@ class FlirAlignedFullCfg(CocoCfg):
         val=dict(ann_filename='meta/thermal/flir_test.json', img_dir='images_thermal_test/data/', has_labels=True),
         test=dict(ann_filename='meta/thermal/flir_test.json', img_dir='images_thermal_test/data/', has_labels=True),
     ))
-
 
 @dataclass
 class FlirAlignedThermalCfg(CocoCfg):

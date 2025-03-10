@@ -8,10 +8,10 @@ from effdet.data.parsers import create_parser
 from .parsers import create_parser as create_parser_stf
 
 from .dataset_config import *
-from .dataset import FusionDatasetFLIR, FusionDatasetM3FD, DetectionDataset
+from .dataset import FusionDatasetFire, FusionDatasetFLIR, FusionDatasetM3FD, DetectionDataset
 from .dataset import XBitFusionDatsetSTF, XBitDetectionDatset
 
-def create_dataset(name, root, vlm_csv_path, splits=('train', 'val')):
+def create_dataset(name, root, vlm_csv_path=None, splits=('train', 'val')):
     print(vlm_csv_path)
     if isinstance(splits, str):
         splits = (splits,)
@@ -84,7 +84,64 @@ def create_dataset(name, root, vlm_csv_path, splits=('train', 'val')):
                 data_dir=root / Path(split_cfg['img_dir']),
                 parser=create_parser(dataset_cfg.parser, cfg=parser_cfg),
             )
-
+    elif name == 'fire_full':
+        dataset_cls = FusionDatasetFire
+        datasets = OrderedDict()
+        dataset_cfg = FireCfg()
+        for s in splits:
+            if s not in dataset_cfg.splits:
+                raise RuntimeError(f'{s} split not found in config')
+            split_cfg = dataset_cfg.splits[s]
+            ann_file = root / split_cfg['ann_filename']
+            parser_cfg = CocoParserCfg(
+                ann_filename=ann_file,
+                has_labels=split_cfg['has_labels']
+            )
+            split_vlm_csv_path = vlm_csv_path[s] if isinstance(vlm_csv_path, dict) else vlm_csv_path
+            datasets[s] = dataset_cls(
+                thermal_data_dir=root / Path(split_cfg['img_dir']),
+                    rgb_data_dir=root / Path(split_cfg['img_dir'].replace('thermal', 'rgb')),
+                parser=create_parser(dataset_cfg.parser, cfg=parser_cfg),
+                vlm_csv_path=split_vlm_csv_path
+            )
+            
+    elif name == 'fire_aligned_rgb': 
+        dataset_cls = DetectionDataset
+        datasets = OrderedDict()
+        dataset_cfg = FireAlignedRGBCfg()
+        for s in splits:
+            if s not in dataset_cfg.splits:
+                raise RuntimeError(f'{s} split not found in config')
+            split_cfg = dataset_cfg.splits[s]
+            ann_file = root / split_cfg['ann_filename']
+            parser_cfg = CocoParserCfg(
+                ann_filename=ann_file,
+                has_labels=split_cfg['has_labels']
+            )
+            datasets[s] = dataset_cls(
+                data_dir=root / Path(split_cfg['img_dir']),
+                parser=create_parser(dataset_cfg.parser, cfg=parser_cfg),
+            )
+            
+    elif name == 'fire_aligned_thermal': 
+        dataset_cls = DetectionDataset
+        datasets = OrderedDict()
+        dataset_cfg = FireAlignedThermalCfg()
+        for s in splits:
+            if s not in dataset_cfg.splits:
+                raise RuntimeError(f'{s} split not found in config')
+            split_cfg = dataset_cfg.splits[s]
+            ann_file = root / split_cfg['ann_filename']
+            parser_cfg = CocoParserCfg(
+                ann_filename=ann_file,
+                has_labels=split_cfg['has_labels']
+            )
+            datasets[s] = dataset_cls(
+                data_dir=root / Path(split_cfg['img_dir']),
+                parser=create_parser(dataset_cfg.parser, cfg=parser_cfg),
+                #vlm_csv_path=vlm_csv_path
+            )
+            
     # M3FD Dataset
     elif name == 'm3fd_full':
         dataset_cls = FusionDatasetM3FD
