@@ -62,6 +62,12 @@ Checkpoints
 Download the FLIR Aligned Dataset from [here](https://drive.google.com/drive/folders/18XmdzKj0sGOFt0r4LmwMo9TsVNpyKEzT?usp=sharing), and extract it into the `Datasets` folder. The folder should have the following structure:
 ```
 Datasets
+├── Fire
+│   ├── rgb_train
+│   ├── rgb_test
+│   ├── thermal_train
+│   ├── thermal_test
+│   ├── meta
 ├── FLIR_Aligned
 │   ├── images_rgb_train
 │   ├── images_rgb_test
