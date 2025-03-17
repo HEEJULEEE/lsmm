@@ -60,35 +60,25 @@ class FusionDatasetFire(data.Dataset):
             ann = self._parser.get_ann_info(index)
             target.update(ann)
 
-        # Thermal 이미지 경로 설정
+        # 이미지 로드
         thermal_img_path = self.thermal_data_dir / img_info['file_name']
         thermal_img = Image.open(thermal_img_path).convert('RGB')
-        
-        # RGB 이미지 경로 설정
-        rgb_img_path = self.rgb_data_dir/img_info['file_name'].replace('.jpg', '-Visual.jpeg')   
-
-        # 이미지 로드
+        rgb_img_path = self.rgb_data_dir / img_info['file_name']
         rgb_img = Image.open(rgb_img_path).convert('RGB')
         
         if self._transform is not None:
             thermal_img, rgb_img, target = self.transform(thermal_img, rgb_img, target)
 
-        # 🔥 VLM Weight 적용 (FLIR2317)
-        file_name_parts = img_info['file_name'].split('_')
-
-        # 만약 언더스코어("_")가 없는 경우 예외 처리
-        if len(file_name_parts) < 2:
-            base_file_name = file_name_parts[0].split('.')[0]  # 확장자 제거 (e.g., "FLIR2483")
-        else:
-            base_file_name = file_name_parts[0] + "_" + file_name_parts[1]
+        base_file_name = img_info['file_name'].split('.')[0].strip()
         tmp_weights = self.weights_data[self.weights_data['Image Pair'] == base_file_name]
-
+        
         if not tmp_weights.empty:
-            rgb_weight = float(tmp_weights['RGB Score'].values[0])
-            thermal_weight = float(tmp_weights['Thermal Score'].values[0])
+            rgb_weight = tmp_weights['RGB Score'].values[0]
+            thermal_weight = tmp_weights['Thermal Score'].values[0]
+            #image_weight = tmp_weights['Image Score'].values[0]
         else:
-            rgb_weight, thermal_weight = 0.5, 0.5
-            print(f"🔥 Default weights applied for {base_file_name}")
+          rgb_weight, thermal_weight = 0.5, 0.5
+          print(f"weights applied for {base_file_name}")
 
         return thermal_img, rgb_img, target, rgb_weight, thermal_weight
 
