@@ -70,7 +70,7 @@ class CBAMLayer(nn.Module):
 
         return x * y
     
-    def save_attention_maps(self, img, epoch, save_path):
+    '''def save_attention_maps(self, img, epoch, save_path):
         if self.save_path is None:
             print(f"[DEBUG] save_path is None. Skipping saving attention maps.")
             return
@@ -128,7 +128,7 @@ class CBAMLayer(nn.Module):
         else:
             print(f"[WARNING] No spatial_attention found for saving!")
 
-        print(f"[INFO] Saved CBAM Overlay & Channel Attention (Epoch {epoch}) at {save_path}")
+        print(f"[INFO] Saved CBAM Overlay & Channel Attention (Epoch {epoch}) at {save_path}")'''
         
 ################################### ResBlock_CBAM #####################################
 class ResBlock_CBAM(nn.Module):

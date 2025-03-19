@@ -5,12 +5,15 @@ import torch
 import tqdm
 from timm.models import load_checkpoint
 from timm.utils import AverageMeter, CheckpointSaver, get_outdir
+import torch.optim as optim
+from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
 
 from data import create_dataset, create_loader, resolve_input_config
 from models.detector import DetBenchTrainImagePair
 from models.models import Att_FusionNet
 from utils.evaluator import create_evaluator
 from utils.utils import visualize_detections, visualize_target
+
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -129,8 +132,9 @@ if __name__ == '__main__':
 
     training_bench.cuda()
 
-    optimizer = torch.optim.Adam(training_bench.parameters(), lr=1e-3, weight_decay=0.0001)
-
+    optimizer = torch.optim.AdamW(training_bench.parameters(), lr=1e-3, weight_decay=0.0001)
+    scheduler = CosineAnnealingWarmRestarts(optimizer, T_0=10, T_mult=2, eta_min=1e-6)
+    
     model_config = training_bench.config
     input_config = resolve_input_config(args, model_config)
 
@@ -187,8 +191,8 @@ if __name__ == '__main__':
     exp_name = args.save+"_"+args.dataset.upper()+"_"+args.att_type.upper()
         
 
-    output_dir = get_outdir(output_base, 'train_flir', exp_name)
-    cbam_save_path = os.path.join(output_dir, "cbam_visualization")
+    output_dir = get_outdir(output_base, 'train_fire', exp_name)
+    #cbam_save_path = os.path.join(output_dir, "cbam_visualization")
 
     saver = CheckpointSaver(
         net, optimizer, args=args, checkpoint_dir=output_dir)
@@ -232,6 +236,8 @@ if __name__ == '__main__':
 
             if args.wandb:
                 visualize_target(train_dataset, target, wandb, args, 'train')
+        
+        scheduler.step()
 
         train_loss_epoch = sum(batch_train_loss) / len(batch_train_loss)
         train_loss.append(sum(batch_train_loss)/len(batch_train_loss))
@@ -257,7 +263,7 @@ if __name__ == '__main__':
         if args.wandb:
             wandb.log({"train_loss": train_loss_epoch, "val_loss": val_loss_epoch, "epoch": epoch}) 
                
-        if epoch == 1 or epoch % 10 == 0:
+        '''if epoch == 1 or epoch % 10 == 0:
             with torch.no_grad():
                 sample_img = rgb_img_tensor[0].cpu().numpy().transpose(1, 2, 0)  
                 sample_img = (sample_img * 255).astype(np.uint8)  
@@ -278,7 +284,7 @@ if __name__ == '__main__':
                         # Attention Map 저장
                         cbam_layer.save_attention_maps(sample_img, epoch, save_path=os.path.join(output_dir, f"cbam_visualization/layer_{i}"))
                     else:
-                        print(f"[ERROR] fusion_cbam{i} NOT FOUND in model!")
+                        print(f"[ERROR] fusion_cbam{i} NOT FOUND in model!")'''
                         
         if saver is not None:
             best_metric, best_epoch = saver.save_checkpoint(epoch=epoch, metric=evaluator.evaluate())
