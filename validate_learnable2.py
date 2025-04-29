@@ -5,14 +5,14 @@ import time
 import torch
 import torch.nn.parallel
 from contextlib import suppress
-
+ 
 from effdet import create_model, create_evaluator
 from timm.utils import AverageMeter, setup_default_logging
 from timm.models import load_checkpoint
 from timm.models.layers import set_layer_config
 
-from models.models import Att_FusionNet
-from models.detector import DetBenchPredictImagePair
+from models.models_learnable2 import Att_FusionNet
+from models.detector_learnable import DetBenchPredictImagePair
 from data import create_dataset, create_loader, resolve_input_config
 from utils.evaluator import CocoEvaluator
 from utils.evaluator import create_evaluator
@@ -172,7 +172,7 @@ def validate(args):
     if args.num_gpu > 1:
         bench = torch.nn.DataParallel(bench, device_ids=list(range(args.num_gpu)))
 
-    dataset = create_dataset(args.dataset, args.root,'/home/heeju064/lsmm/Image_quality_score/FLIR/prompt_hj_avg.csv', args.split )
+    dataset = create_dataset(args.dataset, args.root,None, args.split )
     input_config = resolve_input_config(args, model_config)
     loader = create_loader(
         dataset,

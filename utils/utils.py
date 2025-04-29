@@ -298,9 +298,9 @@ def state_restore_selective(net, loaded_dict, scene=None):
 
 def visualize_detections(dataset, detections, target, wandb, args, split='val', score_threshold=0.5):
     class_id_to_label = { int(i) : str(i) for i in range(1, args.num_classes + 1)}
-    #class_id_to_label.update({1: "person", 2: "bicycle", 3: "car"})
+    class_id_to_label.update({1: "person", 2: "bicycle", 3: "car"})
     #class_id_to_label.update({1: "people", 2: "car", 3: "motorcycle", 4: "bus", 5: "truck", 6: "lamp"})
-    class_id_to_label.update({1: "board", 2: "fire", 3: "light", 4: "utensil", 5: "person"})
+    #class_id_to_label.update({1: "board", 2: "fire", 3: "light", 4: "utensil", 5: "person"})
     detections = detections.detach().cpu().numpy()
     img_indices = target['img_idx'].cpu().numpy()
     bboxes = target['bbox'].cpu().numpy()

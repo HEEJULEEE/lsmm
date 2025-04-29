@@ -41,7 +41,7 @@ class FusionDatasetFire(data.Dataset):
         
         # VLM CSV 파일 로드 (dtype 지정)
         #self.weights_data = pd.read_csv(vlm_csv_path)
-        if vlm_csv_path:
+        if vlm_csv_path is not None:
             self.weights_data = pd.read_csv(vlm_csv_path)
         else:
             self.weights_data = None
@@ -115,7 +115,11 @@ class FusionDatasetFLIR(data.Dataset):
             assert parser is not None and len(parser.img_ids)
             self._parser = parser
         self._transform = transform
-        self.weights_data = pd.read_csv(vlm_csv_path)
+        #self.weights_data = pd.read_csv(vlm_csv_path)
+        if vlm_csv_path is not None:
+            self.weights_data = pd.read_csv(vlm_csv_path)
+        else:
+            self.weights_data = None
     
 
     def __getitem__(self, index):
@@ -142,16 +146,19 @@ class FusionDatasetFLIR(data.Dataset):
 
         # vlm weight
         base_file_name = img_info['file_name'].split('_')[0] + "_" + img_info['file_name'].split('_')[1]
-        tmp_weights = self.weights_data[self.weights_data['Image Pair'] == base_file_name]
-        if not tmp_weights.empty:
-            rgb_weight = tmp_weights['RGB Score'].values[0]
-            thermal_weight = tmp_weights['Thermal Score'].values[0]
-            #image_weight = tmp_weights['Image Score'].values[0]
-            #print(f"Loaded weights - RGB: {rgb_weight}, Thermal: {thermal_weight} for {base_file_name}")
+
+        if self.weights_data is not None:
+            tmp_weights = self.weights_data[self.weights_data['Image Pair'] == base_file_name]
+            if not tmp_weights.empty:
+                rgb_weight = tmp_weights['RGB Score'].values[0]
+                thermal_weight = tmp_weights['Thermal Score'].values[0]
+            else:
+                rgb_weight, thermal_weight = 1.0, 1.0
+                print(f"Default weights applied for {base_file_name}")
         else:
-          rgb_weight, thermal_weight= 0.5, 0.5
-          print(f"Default weights applied for {base_file_name}")
-          #raise ValueError
+            # ✅ weights_data가 아예 없으면 무조건 1.0
+            rgb_weight, thermal_weight = 1.0, 1.0
+            # (optional) print(f"No VLM weights available. Default weights applied for {base_file_name}")
 
         return thermal_img, rgb_img, target, rgb_weight, thermal_weight
 

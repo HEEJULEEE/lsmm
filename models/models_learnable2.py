@@ -8,17 +8,36 @@ from effdet import EfficientDet
 
 from models.fusion_modules import CBAMLayer, ResBlock_CBAM, attention_block, shuffle_attention_block
 
+class QualityPredictor(nn.Module):
+    def __init__(self, in_channels):
+        super(QualityPredictor, self).__init__()
+        self.pool = nn.AdaptiveAvgPool2d(1)  # [B, C, 1, 1]
+        self.fc = nn.Sequential(
+            nn.Conv2d(in_channels, in_channels // 4, 1),  # bottleneck
+            nn.ReLU(),
+            nn.Conv2d(in_channels // 4, 1, 1),            # scalar output
+            nn.Sigmoid()
+        )
+
+    def forward(self, x):
+        x = self.pool(x)  # compress H, W
+        x = self.fc(x)    # [B, 1, 1, 1]
+        return x
+
+
 ##################################### Attention Fusion Net ###############################################
 class Att_FusionNet(nn.Module):
 
     def __init__(self, args):
         super(Att_FusionNet, self).__init__()
 
+        print("Learnable2")
+
         self.config = effdet.config.model_config.get_efficientdet_config('efficientdetv2_dt')
         self.config.num_classes = args.num_classes
 
-        thermal_det = EfficientDet(self.config)
-        rgb_det = EfficientDet(self.config)
+        thermal_det = EfficientDet(self.config,pretrained_backbone=True)
+        rgb_det = EfficientDet(self.config,pretrained_backbone=True)
 
         if args.thermal_checkpoint_path:
             effdet.helpers.load_checkpoint(thermal_det, args.thermal_checkpoint_path)
@@ -79,6 +98,11 @@ class Att_FusionNet(nn.Module):
                     self.add_module("fusion_"+self.attention_type+str(level), shuffle_attention_block(2*in_chs))
                 else:
                     raise ValueError('Attention type not supported.')
+                
+        
+        self.thermal_quality_predictor = QualityPredictor(in_chs)
+        self.rgb_quality_predictor = QualityPredictor(in_chs)
+        self.tag = args.split
 
     def forward(self, data_pair, rgb_weight, thermal_weight, branch='fusion'):
         thermal_x, rgb_x = data_pair[0], data_pair[1]
@@ -94,20 +118,49 @@ class Att_FusionNet(nn.Module):
             thermal_x = self.thermal_fpn(thermal_x)
             rgb_x = self.rgb_fpn(rgb_x)
 
-            out = []
-            thermal_weight = thermal_weight.view(-1, 1, 1, 1).to(thermal_x[0].device) 
-            rgb_weight = rgb_weight.view(-1, 1, 1, 1).to(thermal_x[0].device)          
-            
-            gate_rgb = self.sigmoid(self.gate_w_rgb * rgb_weight + self.gate_b_rgb) 
-            gate_th = self.sigmoid(self.gate_w_th * thermal_weight + self.gate_b_th)
+            out = []  
+            out_pred = []                
+            # print(thermal_weight,rgb_weight)  
             
             for i, (tx, vx) in enumerate(zip(thermal_x, rgb_x)):
-                tx = tx * gate_th  # thermal feature에 pre-gating
-                vx = vx * gate_rgb  # rgb feature에 pre-gating
-                x = torch.cat((tx, vx), dim=1)  # concat해서 attention fusion
-                attention = getattr(self, "fusion_" + self.attention_type + str(i))
-                out.append(attention(x))
-                
+                if self.training:
+                    thermal_weight_vlm = thermal_weight.view(-1, 1, 1, 1).to(tx.device)
+                    rgb_weight_vlm = rgb_weight.view(-1, 1, 1, 1).to(vx.device)
+
+                    # Gate for VLM weights
+                    gate_th_vlm = self.sigmoid(self.gate_w_th * thermal_weight_vlm + self.gate_b_th)
+                    gate_rgb_vlm = self.sigmoid(self.gate_w_rgb * rgb_weight_vlm + self.gate_b_rgb)
+
+                    # VLM 기반 fused
+                    fused = torch.cat((tx * gate_th_vlm, vx * gate_rgb_vlm), dim=1)
+                    attention = getattr(self, "fusion_" + self.attention_type + str(i))
+                    out.append(attention(fused))
+
+                    with torch.no_grad():
+                        pred_thermal_weight = self.thermal_quality_predictor(tx)
+                        pred_rgb_weight = self.rgb_quality_predictor(vx)
+
+                        gate_th_pred = self.sigmoid(self.gate_w_th * pred_thermal_weight + self.gate_b_th)
+                        gate_rgb_pred = self.sigmoid(self.gate_w_rgb * pred_rgb_weight + self.gate_b_rgb)
+
+                        fused_pred = torch.cat((tx * gate_th_pred, vx * gate_rgb_pred), dim=1)
+                        out_pred.append(attention(fused_pred))
+
+                else:
+                    pred_thermal_weight = self.thermal_quality_predictor(tx)
+                    pred_rgb_weight = self.rgb_quality_predictor(vx)
+
+                    gate_th_pred = self.sigmoid(self.gate_w_th * pred_thermal_weight + self.gate_b_th)
+                    gate_rgb_pred = self.sigmoid(self.gate_w_rgb * pred_rgb_weight + self.gate_b_rgb)
+
+                    fused = torch.cat((tx * gate_th_pred, vx * gate_rgb_pred), dim=1)
+                    attention = getattr(self, "fusion_" + self.attention_type + str(i))
+                    out.append(attention(fused))
+
+            out_pred = out_pred if self.training else out
+
+                    
+
         else:
             fpn = getattr(self, f'{branch}_fpn')
             backbone = getattr(self, f'{branch}_backbone')
@@ -122,4 +175,4 @@ class Att_FusionNet(nn.Module):
         x_class = class_net(out)
         x_box = box_net(out)
 
-        return x_class, x_box
+        return x_class, x_box, out, out_pred
