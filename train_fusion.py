@@ -31,11 +31,15 @@ def set_eval_mode(network, freeze_layer):
         if freeze_layer not in name:
             module.eval()
 
-def freeze(network, freeze_layer):
+'''def freeze(network, freeze_layer):
     for name, param in network.named_parameters():
         if freeze_layer not in name:
+            param.requires_grad = False'''
+            
+def freeze(network, freeze_layer):
+    for name, param in network.named_parameters():
+        if freeze_layer not in name and 'gate' not in name:
             param.requires_grad = False
-
 
 if __name__ == '__main__':
 
@@ -96,6 +100,8 @@ if __name__ == '__main__':
                         help='path to output folder (default: none, current dir)')
     parser.add_argument('--wandb', action='store_true',
                         help='use wandb for logging and visualization')
+    parser.add_argument('--experiment-name', type=str, default=None,
+                        help='WandB experiment name (optional)')
 
     args = parser.parse_args()
     args.prefetcher = not args.no_prefetcher
@@ -191,7 +197,7 @@ if __name__ == '__main__':
     exp_name = args.save+"_"+args.dataset.upper()+"_"+args.att_type.upper()
         
 
-    output_dir = get_outdir(output_base, 'train_fire', exp_name)
+    output_dir = get_outdir(output_base, 'train_flir', exp_name)
     cbam_save_path = os.path.join(output_dir, "cbam_visualization")
 
     saver = CheckpointSaver(
@@ -204,6 +210,7 @@ if __name__ == '__main__':
         config.update({arg: getattr(args, arg) for arg in vars(args)})
         wandb.init(
           project='RGBX_FUSION'+args.att_type,
+          name=args.experiment_name,
           config=config
         )
 
@@ -261,7 +268,11 @@ if __name__ == '__main__':
             val_loss.append(sum(batch_val_loss)/len(batch_val_loss))
         
         if args.wandb:
-            wandb.log({"train_loss": train_loss_epoch, "val_loss": val_loss_epoch, "epoch": epoch}) 
+            wandb.log({"train_loss": train_loss_epoch, "val_loss": val_loss_epoch, "epoch": epoch,
+                       "gate/w_rgb": training_bench.model.gate_w_rgb.item(),
+                        "gate/b_rgb": training_bench.model.gate_b_rgb.item(),
+                        "gate/w_th": training_bench.model.gate_w_th.item(),
+                        "gate/b_th": training_bench.model.gate_b_th.item(),}) 
                
         if epoch == 1 or epoch % 10 == 0:
             with torch.no_grad():
@@ -294,7 +305,6 @@ if __name__ == '__main__':
             
         del output
         torch.cuda.empty_cache()
-
 
     # Plotting the training and validation loss curves and saving the plot
     plt.plot(train_loss, label='Training loss')
