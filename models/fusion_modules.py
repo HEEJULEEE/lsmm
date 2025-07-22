@@ -361,3 +361,16 @@ class shuffle_attention_block(nn.Module):
         out = self.combine(out)
         
         return out
+    
+    ################################################# Simple Fusion (No CBAM) ############################################################
+class NoCBAMLayer(nn.Module):
+    def __init__(self, channel, out_channel, reduction=16, save_path=None):
+        super(NoCBAMLayer, self).__init__()
+        self.reduce = nn.Sequential(
+            nn.Conv2d(channel, out_channel, kernel_size=1),
+            nn.BatchNorm2d(out_channel),
+            nn.ReLU(inplace=True)
+        )
+
+    def forward(self, x):
+        return self.reduce(x)

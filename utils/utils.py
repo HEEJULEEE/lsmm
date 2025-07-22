@@ -1,9 +1,13 @@
-import copy
+import os
 # import ensemble_boxes
 import numpy as np
 import torch
 import torchvision
 from PIL import Image
+import cv2
+import torch.serialization  
+
+
 
 def normalize_boxes(boxes, img_size, invert=False):
     if invert:
@@ -17,6 +21,9 @@ def normalize_boxes(boxes, img_size, invert=False):
         boxes[..., 2] = boxes[..., 2] / img_size[0]
         boxes[..., 3] = boxes[..., 3] / img_size[1]
     return boxes
+
+
+
 
 def bounding_boxes(v_boxes, v_labels, v_scores, log_width, log_height, class_id_to_label, score_threshold):
     all_boxes = []
@@ -44,41 +51,7 @@ def bounding_boxes(v_boxes, v_labels, v_scores, log_width, log_height, class_id_
 
         all_boxes.append(box_data)
     return all_boxes
-'''def bounding_boxes(v_boxes, v_labels, v_scores, log_width, log_height, class_id_to_label, score_threshold):
-    all_boxes = []
-    # plot each bounding box for this image
-    for b_i, box in enumerate(v_boxes):
-        # Skip invalid or ignored labels
-        if int(v_labels[b_i]) == -1:
-            continue
 
-        # Skip low confidence scores if v_scores is not None
-        if v_scores is not None and v_scores[b_i] < score_threshold:
-            continue
-
-        caption = "%s" % (class_id_to_label.get(int(v_labels[b_i]), "unknown"))  # Handle unexpected labels
-        if v_scores is not None and v_scores[b_i] <= 1:
-            caption = "%s (%.3f)" % (class_id_to_label.get(int(v_labels[b_i]), "unknown"), v_scores[b_i])
-
-        # from xyxy
-        box_data = {
-            "position": {
-                "minX": int(box[0]),
-                "minY": int(box[1]),
-                "maxX": int(box[2]),
-                "maxY": int(box[3])
-            },
-            "class_id": int(v_labels[b_i]),
-            "box_caption": caption,
-            "domain": "pixel"
-        }
-
-        # Add score only if available
-        if v_scores is not None:
-            box_data["scores"] = {"score": int(v_scores[b_i] * 100)}
-
-        all_boxes.append(box_data)
-    return all_boxes'''
 
 def tensor2im(input_image, imtype=np.uint8):
     """"Converts a Tensor array into a numpy image array.
@@ -99,175 +72,235 @@ def tensor2im(input_image, imtype=np.uint8):
         image_numpy = input_image
     return image_numpy.astype(imtype)
 
-
-def visualize_detections(dataset, detections, target, wandb, args, split='val', score_threshold=0.5, img_tensor=None):
-    class_id_to_label = { int(i) : str(i) for i in range(1, args.num_classes + 1)}
-    class_id_to_label.update({1: "person", 2: "bicycle", 3: "car"})
-    detections = detections.detach().cpu().numpy()
-    img_indices = target['img_idx'].cpu().numpy()
-    bboxes = target['bbox'].cpu().numpy()
-    clses = target['cls'].cpu().numpy()
-    scores = target['scores'].cpu().numpy() if 'scores' in target else np.zeros_like(clses) + 1000
-    img_scales = target['img_scale'].cpu().numpy()
-    for i, (img_idx, img_dets, bbox, cls, img_scale, score) in enumerate(zip(img_indices, detections, bboxes, clses, img_scales, scores)):
-        img_id = dataset.parser.img_ids[img_idx]
-        img_info = dataset.parser.img_infos[img_idx]
-        # yxyx to xyxy
-        if img_tensor is None:
-            bbox[:, 0:4] = bbox[:, [1, 0, 3, 2]] * img_scale
-            filename = dataset.thermal_data_dir/img_info['file_name']
-            raw_image = Image.open(filename).convert('RGB')
-        else:
-            bbox[:, 0:4] = bbox[:, [1, 0, 3, 2]]
-            img_dets[:, 0:4] = img_dets[:, 0:4] / img_scale
-            raw_image = tensor2im(img_tensor[i])
-        predicted_boxes = bounding_boxes(
-            v_boxes=img_dets[:, 0:4],
-            v_labels=img_dets[:, 5],
-            v_scores=img_dets[:, 4],
-            log_width=img_info['width'],
-            log_height=img_info['height'],
-            class_id_to_label=class_id_to_label,
-            score_threshold=score_threshold)
-        gt_boxes = bounding_boxes(
-            v_boxes=bbox,
-            v_labels=cls,
-            v_scores=score,
-            log_width=img_info['width'],
-            log_height=img_info['height'],
-            class_id_to_label=class_id_to_label,
-            score_threshold=0)
-        # log to wandb: raw image, predictions, and dictionary of class labels for each class id
-        # box_image = wandb.Image(raw_image, boxes = {"predictions": {"box_data": predicted_boxes, "class_labels" : class_id_to_label},
-        #                                             "gts": {"box_data": gt_boxes, "class_labels" : class_id_to_label}})
-        # wandb.log({split: box_image})
-
-
-def visualize_target(dataset, target, wandb, args, split='val', img_tensor=None):
-    class_id_to_label = { int(i) : str(i) for i in range(1, args.num_classes + 1)}
-    class_id_to_label.update({1: "person", 2: "bicycle", 3: "car"})
-    img_indices = target['img_idx'].cpu().numpy()
-    bboxes = target['bbox'].cpu().numpy()
-    clses = target['cls'].cpu().numpy()
-    scores = target['scores'].cpu().numpy() if 'scores' in target else np.zeros_like(clses) + 1000
-    img_scales = target['img_scale'].cpu().numpy()
-    for i, (img_idx, bbox, cls, img_scale, score) in enumerate(zip(img_indices, bboxes, clses, img_scales, scores)):
-        img_id = dataset.parser.img_ids[img_idx]
-        img_info = dataset.parser.img_infos[img_idx]
-        # yxyx to xyxy
-        if img_tensor is None:
-            bbox[:, 0:4] = bbox[:, [1, 0, 3, 2]] * img_scale
-            filename = dataset.thermal_data_dir/img_info['file_name']
-            raw_image = Image.open(filename).convert('RGB')
-        else:
-            bbox[:, 0:4] = bbox[:, [1, 0, 3, 2]]
-            raw_image = tensor2im(img_tensor[i])
-        gt_boxes = bounding_boxes(
-            v_boxes=bbox,
-            v_labels=cls,
-            v_scores=score,
-            log_width=img_info['width'],
-            log_height=img_info['height'],
-            class_id_to_label=class_id_to_label,
-            score_threshold=0)
-        # log to wandb: raw image, predictions, and dictionary of class labels for each class id
-        #box_image = wandb.Image(raw_image, boxes = {'gts': {"box_data": gt_boxes, "class_labels" : class_id_to_label}})
-        #wandb.log({split: box_image})
-'''
-def visualize_detections(dataset, detections, target, wandb, args, split='val', score_threshold=0.5):
-    class_id_to_label = { int(i) : str(i) for i in range(1, args.num_classes + 1)}
-    class_id_to_label.update({1: "person", 2: "bicycle", 3: "car"})
-    #class_id_to_label.update({1: "people", 2: "car", 3: "motorcycle", 4: "bus", 5: "truck", 6: "lamp"})
-    detections = detections.detach().cpu().numpy()
-    img_indices = target['img_idx'].cpu().numpy()
-    bboxes = target['bbox'].cpu().numpy()
-    clses = target['cls'].cpu().numpy()
-    scores = target['scores'].cpu().numpy() if 'scores' in target else np.zeros_like(clses) + 1000
-    img_scales = target['img_scale'].cpu().numpy()
-    
-    for i, (img_idx, img_dets, bbox, cls, img_scale, score) in enumerate(zip(img_indices, detections, bboxes, clses, img_scales, scores)):
-        #img_id = dataset.parser.img_ids[img_idx]
-        img_info = dataset.parser.img_infos[img_idx]
-        # yxyx to xyxy
-        bbox[:, 0:4] = bbox[:, [1, 0, 3, 2]] * img_scale
-        predicted_boxes = bounding_boxes(
-            v_boxes=img_dets[:, 0:4],
-            v_labels=img_dets[:, 5],
-            v_scores=img_dets[:, 4],
-            log_width=img_info['width'],
-            log_height=img_info['height'],
-            class_id_to_label=class_id_to_label,
-            score_threshold=score_threshold)
-
-        gt_boxes = bounding_boxes(
-            v_boxes=bbox,
-            v_labels=cls,
-            v_scores=score,
-            log_width=img_info['width'],
-            log_height=img_info['height'],
-            class_id_to_label=class_id_to_label,
-            score_threshold=0)
-
-        filename = dataset.thermal_data_dir/img_info['file_name']
-        filename_rgb = dataset.rgb_data_dir/img_info['file_name'].replace('_PreviewData.jpg', '_RGB.jpg')
-        draw_image = Image.open(filename).convert('RGB')
-        draw_image_rgb = Image.open(filename_rgb).convert('RGB')
-        # log to wandb: raw image, predictions, and dictionary of class labels for each class id
-        # log to wandb: raw image, predictions, and dictionary of class labels for each class id
-
-        draw_boxes(filename,predicted_boxes, gt_boxes, 90 )
-        draw_boxes(filename_rgb,predicted_boxes, gt_boxes, 90 )
-
-        # box_image = wandb.Image(raw_image, boxes = {"predictions": {"box_data": predicted_boxes, "class_labels" : class_id_to_label},
-        #                                             "gts": {"box_data": gt_boxes, "class_labels" : class_id_to_label}})
-        # wandb.log({split: box_image})
-
-        # box_image = wandb.Image(raw_image, boxes = {"predictions": {"box_data": predicted_boxes, "class_labels" : class_id_to_label},
-        #                                             "gts": {"box_data": gt_boxes, "class_labels" : class_id_to_label}},
-        #                                             caption=str(filename))
-        # box_image_rgb = wandb.Image(raw_image_rgb, boxes = {"predictions": {"box_data": predicted_boxes, "class_labels" : class_id_to_label},
-        #                                             "gts": {"box_data": gt_boxes, "class_labels" : class_id_to_label}},
-        #                                            caption=str(filename_rgb))
-        # wandb.log({'thermal': box_image})
-        # wandb.log({'rgb': box_image_rgb})
-
-def draw_boxes(img_path, predicted_boxes, gt_boxes, num_classes):
-    #  boxes, scores, labels, colors, classes
+'''def draw_pred_boxes(img_path, predicted_boxes, class_id_to_color, output_path):
     import cv2
-    colors = [np.random.randint(0, 256, 3).tolist() for _ in range(num_classes)]
-    color_gt = (0, 255, 0)
-    image = cv2.imread(img_path)
+    image = cv2.imread(str(img_path))
+    for box in predicted_boxes:
+        xmin = box['position']['minX']
+        ymin = box['position']['minY']
+        xmax = box['position']['maxX']
+        ymax = box['position']['maxY']
+        label = box['box_caption']
+        class_id = box['class_id']
+        color = class_id_to_color.get(class_id, (128, 128, 128))
 
-    for predictions in predicted_boxes:
-        xmin, ymin, xmax, ymax = predictions['position']['minX'],predictions['position']['minY'],predictions['position']['maxX'],predictions['position']['maxY']
-        class_id = predictions['class_id']
-        label = predictions['box_caption']
-        color = colors[class_id-1]
-    
         ret, baseline = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
         cv2.rectangle(image, (xmin, ymin), (xmax, ymax), color, 1)
-        cv2.rectangle(image, (xmin, ymax - ret[1] - baseline), (xmin + ret[0], ymax), color, -1)
-        cv2.putText(image, label, (xmin, ymax - baseline), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
-
-
-    for gt in gt_boxes:
-        xmin, ymin, xmax, ymax = gt['position']['minX'], gt['position']['minY'], gt['position']['maxX'], gt['position']['maxY']
-        label = gt['box_caption']
-        
-        ret, baseline = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
-        cv2.rectangle(image, (xmin, ymin), (xmax, ymax), color_gt, 1)  # GT 박스는 초록색
-        cv2.rectangle(image, (xmin, ymin - ret[1] - baseline), (xmin + ret[0], ymin), color_gt, -1)
+        cv2.rectangle(image, (xmin, ymin - ret[1] - baseline), (xmin + ret[0], ymin), color, -1)
         cv2.putText(image, label, (xmin, ymin - baseline), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+    cv2.imwrite(output_path, image)'''
     
-    cv2.imwrite('/home/tchjlee/lsmm/bb_output/'+str(img_path).split('/')[-1],image)
+def draw_pred_boxes(img_path, predicted_boxes, class_id_to_color, class_id_to_label, output_path):
+    import cv2
+    image = cv2.imread(str(img_path))
+    for box in predicted_boxes:
+        xmin = box['position']['minX']
+        ymin = box['position']['minY']
+        xmax = box['position']['maxX']
+        ymax = box['position']['maxY']
+        class_id = box['class_id']
+        color = class_id_to_color.get(class_id, (128, 128, 128))
 
+        # 두 줄 caption 처리
+        caption = box.get('box_caption', [class_id_to_label.get(class_id, 'unknown')])
+        if not isinstance(caption, list):
+            caption = [caption]  # fallback 처리
+
+        font_scale = 0.5
+        thickness = 1
+
+        # 첫 줄 텍스트 크기 계산 (가장 긴 줄 기준)
+        max_width = 0
+        total_height = 0
+        text_sizes = []
+        for line in caption:
+            (w, h), base = cv2.getTextSize(line, cv2.FONT_HERSHEY_SIMPLEX, font_scale, thickness)
+            text_sizes.append(((w, h), base))
+            max_width = max(max_width, w)
+            total_height += h + base
+
+        # 텍스트 배경 박스
+        text_y = max(ymin - total_height, 0)
+        cv2.rectangle(image, (xmin, text_y), (xmin + max_width, text_y + total_height), color, -1)
+
+        # 각 줄 텍스트 출력
+        line_y = text_y
+        for i, line in enumerate(caption):
+            (w, h), base = text_sizes[i]
+            cv2.putText(image, line, (xmin, line_y + h), cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0, 0, 0), thickness)
+            line_y += h + base
+
+        # 바운딩 박스
+        cv2.rectangle(image, (xmin, ymin), (xmax, ymax), color, 1)
+
+    cv2.imwrite(output_path, image)
+
+    
+def visualize_detections(dataset, detections, target, output_dir, args, split='val', score_threshold=0.5, img_tensor=None):
+    #os.makedirs(output_dir, exist_ok=True)
+    
+    # 클래스 라벨과 고정 색상 정의
+    class_id_to_label = {int(i): str(i) for i in range(1, args.num_classes + 1)}
+    class_id_to_label.update({1: "person", 2: "bicycle", 3: "car"})
+    class_id_to_color = {
+        1: (255, 0, 0),   # person - blue
+        2: (0, 255, 0),   # bicycle - green
+        3: (0, 0, 255),   # car - red
+    }
+    '''class_id_to_label.update({1: "people", 2: "car", 3: "motorcycle", 4: "bus", 5: "truck", 6: "lamp"})
+    class_id_to_color = {
+    1: (255, 0, 0),     
+    2: (0, 255, 0),     
+    3: (0, 0, 255),     
+    4: (255, 255, 0),   
+    5: (255, 165, 0),   
+    6: (128, 0, 128),   
+    }'''
+    '''class_id_to_label.update({1: "board", 2: "fire", 3: "light", 4: "utensil", 5: "person"})
+
+    class_id_to_color = {
+    1: (255, 165, 0),   # board - 주황
+    2: (255, 0, 0),     # fire - 빨강
+    3: (0, 255, 255),   # light - 밝은 하늘색
+    4: (0, 255, 0),     # utensil - 초록
+    5: (0, 0, 255),     # person - 파랑
+    }'''
+    detections = detections.detach().cpu().numpy()
+    img_indices = target['img_idx'].cpu().numpy()
+    img_scales = target['img_scale'].cpu().numpy()
+
+    for i, (img_idx, img_dets, img_scale) in enumerate(zip(img_indices, detections, img_scales)):
+        img_info = dataset.parser.img_infos[img_idx]
+        img_name = img_info['file_name']
+
+        # 예측 박스 필터링 및 변환
+        predicted_boxes = []
+        for j in range(img_dets.shape[0]):
+            if img_dets[j, 4] < score_threshold:
+                continue
+            class_id = int(img_dets[j, 5])
+            score_val = img_dets[j, 4]
+            xmin, ymin, xmax, ymax = map(int, img_dets[j, 0:4])
+            #caption = f"{class_id_to_label.get(class_id, 'unknown')} ({score_val:.3f})"
+            caption = [
+                class_id_to_label.get(class_id, 'unknown'),
+                f"({score_val:.3f})"
+            ]
+            predicted_boxes.append({
+                "position": {"minX": xmin, "minY": ymin, "maxX": xmax, "maxY": ymax},
+                "class_id": class_id,
+                "box_caption": caption,
+            })
+
+        # 이미지 경로 및 출력 경로 정의
+        filename_thermal = dataset.thermal_data_dir / img_name
+        filename_rgb = dataset.rgb_data_dir / img_name.replace('_PreviewData.jpg', '_RGB.jpg')
+
+        # 저장 경로는 동일 output_dir 아래
+        basename = img_name.replace('.jpg', '')# 확장자 제거
+        thermal_out = os.path.join(output_dir, f"{basename}_thermal_gate.png")
+        rgb_out     = os.path.join(output_dir, f"{basename}_rgb_gate.png")
+        '''filename_thermal = dataset.thermal_data_dir / img_name
+        filename_rgb = dataset.rgb_data_dir / img_name
+
+        # 확장자를 유지한 채 _thermal_pred, _rgb_pred 추가
+        basename = img_name.replace('.png', '')  # '00001' 형태
+        thermal_out = os.path.join(output_dir, f"{basename}_thermal_pred.png")
+        rgb_out = os.path.join(output_dir, f"{basename}_rgb_pred.png")'''
+
+        # 박스 시각화 및 저장
+        #draw_pred_boxes(filename_thermal, predicted_boxes, class_id_to_color, thermal_out)
+        #draw_pred_boxes(filename_rgb, predicted_boxes, class_id_to_color, rgb_out)
+        draw_pred_boxes(filename_thermal, predicted_boxes, class_id_to_color, class_id_to_label, thermal_out)
+        draw_pred_boxes(filename_rgb, predicted_boxes, class_id_to_color, class_id_to_label, rgb_out)
+       
+def visualize_target(dataset, target, output_dir, args, split='val', img_tensor=None):
+    #os.makedirs(output_dir, exist_ok=True)
+
+    # 클래스 라벨과 색상 정의
+    class_id_to_label = {int(i): str(i) for i in range(1, args.num_classes + 1)}
+    '''class_id_to_label.update({1: "people", 2: "car", 3: "motorcycle", 4: "bus", 5: "truck", 6: "lamp"})
+    class_id_to_color = {
+        1: (255, 0, 0),
+        2: (0, 255, 0),
+        3: (0, 0, 255),
+        4: (255, 255, 0),
+        5: (255, 165, 0),
+        6: (128, 0, 128),
+    }'''
+    class_id_to_label.update({1: "person", 2: "bicycle", 3: "car"})
+    class_id_to_color = {
+        1: (255, 0, 0),   # person - blue
+        2: (0, 255, 0),   # bicycle - green
+        3: (0, 0, 255),   # car - red
+    }
+    '''class_id_to_label.update({1: "board", 2: "fire", 3: "light", 4: "utensil", 5: "person"})
+    class_id_to_color = {
+    1: (0, 128, 255),   
+    2: (255, 165, 0),     
+    3: (255, 255, 0),   
+    4: (0, 255, 0),     
+    5: (255, 0, 0),   
+    }
 '''
+    img_indices = target['img_idx'].cpu().numpy()
+    bboxes = target['bbox'].cpu().numpy()
+    clses = target['cls'].cpu().numpy()
+    scores = target['scores'].cpu().numpy() if 'scores' in target else np.ones_like(clses)  # GT 점수 1로 설정
+    img_scales = target['img_scale'].cpu().numpy()
+
+    for i, (img_idx, bbox, cls, img_scale, score) in enumerate(zip(img_indices, bboxes, clses, img_scales, scores)):
+        img_info = dataset.parser.img_infos[img_idx]
+        img_name = img_info['file_name']
+
+        # 바운딩 박스 스케일 조정 및 좌표 변환
+        if img_tensor is None:
+            bbox[:, 0:4] = bbox[:, [1, 0, 3, 2]] * img_scale
+            filename = dataset.thermal_data_dir / img_name
+            raw_image_path = str(filename)
+        else:
+            bbox[:, 0:4] = bbox[:, [1, 0, 3, 2]]
+            raw_image_path = None
+
+        # box 리스트 구성
+        gt_boxes = []
+        for j in range(bbox.shape[0]):
+            class_id = int(cls[j])
+            if class_id == -1:
+                continue  # 무효 클래스 생략
+
+            xmin, ymin, xmax, ymax = map(int, bbox[j][:4])
+            caption = [class_id_to_label.get(class_id, 'unknown')]  # ✅ 점수 제거
+            gt_boxes.append({
+                "position": {"minX": xmin, "minY": ymin, "maxX": xmax, "maxY": ymax},
+                "class_id": class_id,
+                "box_caption": caption,
+            })
+
+        # 시각화 및 저장
+        if raw_image_path:
+            filename_thermal = dataset.thermal_data_dir / img_name
+            filename_rgb = dataset.rgb_data_dir / img_name.replace('_PreviewData.jpg', '_RGB.jpg')
+
+            # 저장 경로는 동일 output_dir 아래
+            basename = img_name.replace('.jpg', '').replace('.png', '')  # 확장자 제거
+            thermal_out = os.path.join(output_dir, f"{basename}_thermal_gt.jpg")
+            rgb_out     = os.path.join(output_dir, f"{basename}_rgb_gt.jpg")
+
+            # 저장 실행 (변수명 일치)
+            draw_pred_boxes(filename_thermal, gt_boxes, class_id_to_color, class_id_to_label, thermal_out)
+            draw_pred_boxes(filename_rgb, gt_boxes, class_id_to_color, class_id_to_label, rgb_out)
+
+
 
 def load_checkpoint_selective(net, snapshot, scene=None):
     """
     Restore weights and optimizer (if needed ) for resuming job.
     """
     checkpoint = torch.load(snapshot, map_location=torch.device('cpu'))
+
+    '''with torch.serialization.safe_globals(["argparse.Namespace"]):
+        checkpoint = torch.load(snapshot, map_location=torch.device('cpu'), weights_only=False)'''
 
     if 'state_dict' in checkpoint:
         net = state_restore_selective(net, checkpoint['state_dict'], scene)
@@ -296,11 +329,10 @@ def state_restore_selective(net, loaded_dict, scene=None):
     net.load_state_dict(net_state_dict)
     return net
 
-def visualize_detections(dataset, detections, target, wandb, args, split='val', score_threshold=0.5):
+'''def visualize_detections(dataset, detections, target, wandb, args, split='val', score_threshold=0.5):
     class_id_to_label = { int(i) : str(i) for i in range(1, args.num_classes + 1)}
     class_id_to_label.update({1: "person", 2: "bicycle", 3: "car"})
     #class_id_to_label.update({1: "people", 2: "car", 3: "motorcycle", 4: "bus", 5: "truck", 6: "lamp"})
-    #class_id_to_label.update({1: "board", 2: "fire", 3: "light", 4: "utensil", 5: "person"})
     detections = detections.detach().cpu().numpy()
     img_indices = target['img_idx'].cpu().numpy()
     bboxes = target['bbox'].cpu().numpy()
@@ -333,159 +365,15 @@ def visualize_detections(dataset, detections, target, wandb, args, split='val', 
         raw_image = Image.open(filename).convert('RGB')
         raw_image_rgb = Image.open(filename_rgb).convert('RGB')
         # log to wandb: raw image, predictions, and dictionary of class labels for each class id
-        #box_image = wandb.Image(raw_image, boxes = {"predictions": {"box_data": predicted_boxes, "class_labels" : class_id_to_label},
-                                                   # "gts": {"box_data": gt_boxes, "class_labels" : class_id_to_label}},
-                                                    #caption=str(filename))
-        #box_image_rgb = wandb.Image(raw_image_rgb, boxes = {"predictions": {"box_data": predicted_boxes, "class_labels" : class_id_to_label},
-                                                    #"gts": {"box_data": gt_boxes, "class_labels" : class_id_to_label}},
-                                                   #caption=str(filename_rgb))
-        #wandb.log({'thermal': box_image})
-        #wandb.log({'rgb': box_image_rgb})
+        box_image = wandb.Image(raw_image, boxes = {"predictions": {"box_data": predicted_boxes, "class_labels" : class_id_to_label},
+                                                    "gts": {"box_data": gt_boxes, "class_labels" : class_id_to_label}},
+                                                    caption=str(filename))
+        box_image_rgb = wandb.Image(raw_image_rgb, boxes = {"predictions": {"box_data": predicted_boxes, "class_labels" : class_id_to_label},
+                                                    "gts": {"box_data": gt_boxes, "class_labels" : class_id_to_label}},
+                                                   caption=str(filename_rgb))
+        wandb.log({'thermal': box_image})
+        wandb.log({'rgb': box_image_rgb})'''
 
-import os
-
-'''def visualize_detections(dataset, detections, target, output_dir, args, split='val', score_threshold=0.5):
-    os.makedirs(output_dir, exist_ok=True)  # 출력 디렉토리가 없으면 생성
-    class_id_to_label = {int(i): str(i) for i in range(1, args.num_classes + 1)}
-    class_id_to_label.update({1: "person", 2: "bicycle", 3: "car"})
-
-    detections = detections.detach().cpu().numpy()
-    img_indices = target['img_idx'].cpu().numpy()
-    bboxes = target['bbox'].cpu().numpy()
-    clses = target['cls'].cpu().numpy()
-    scores = target['scores'].cpu().numpy() if 'scores' in target else np.zeros_like(clses) + 1000
-    img_scales = target['img_scale'].cpu().numpy()
-
-    for i, (img_idx, img_dets, bbox, cls, img_scale, score) in enumerate(zip(img_indices, detections, bboxes, clses, img_scales, scores)):
-        img_info = dataset.parser.img_infos[img_idx]
-        # yxyx to xyxy
-        bbox[:, 0:4] = bbox[:, [1, 0, 3, 2]] * img_scale
-
-        # 예측 박스와 GT 박스 생성
-        predicted_boxes = bounding_boxes(
-            v_boxes=img_dets[:, 0:4],
-            v_labels=img_dets[:, 5],
-            v_scores=img_dets[:, 4],
-            log_width=img_info['width'],
-            log_height=img_info['height'],
-            class_id_to_label=class_id_to_label,
-            score_threshold=score_threshold)
-
-        gt_boxes = bounding_boxes(
-            v_boxes=bbox,
-            v_labels=cls,
-            v_scores=None,  # GT 박스는 점수가 없음
-            log_width=img_info['width'],
-            log_height=img_info['height'],
-            class_id_to_label=class_id_to_label,
-            score_threshold=0)
-
-        # 열화상 이미지와 RGB 이미지 경로
-        filename = dataset.thermal_data_dir / img_info['file_name']
-        filename_rgb = dataset.rgb_data_dir / img_info['file_name'].replace('_PreviewData.jpg', '_RGB.jpg')
-
-        # 박스 그리기 및 저장
-        thermal_output_path = os.path.join(output_dir, f"{img_info['file_name']}_thermal.jpg")
-        rgb_output_path = os.path.join(output_dir, f"{img_info['file_name']}_rgb.jpg")
-
-        draw_boxes(filename, predicted_boxes, gt_boxes, args.num_classes, thermal_output_path)
-        draw_boxes(filename_rgb, predicted_boxes, gt_boxes, args.num_classes, rgb_output_path)
-
-        print(f"Saved thermal image: {thermal_output_path}")
-        print(f"Saved RGB image: {rgb_output_path}")
-
-def draw_boxes(img_path, predicted_boxes, gt_boxes, num_classes, output_path):
-    import cv2
-    colors = [np.random.randint(0, 256, 3).tolist() for _ in range(num_classes)]
-    color_gt = (0, 255, 0)  # GT 박스는 초록색으로 고정
-    image = cv2.imread(str(img_path))
-
-    # 예측 박스 그리기
-    for predictions in predicted_boxes:
-        xmin, ymin, xmax, ymax = predictions['position']['minX'], predictions['position']['minY'], predictions['position']['maxX'], predictions['position']['maxY']
-        class_id = predictions['class_id']
-        label = predictions['box_caption']
-        color = colors[class_id - 1]
-
-        ret, baseline = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
-        cv2.rectangle(image, (xmin, ymin), (xmax, ymax), color, 1)
-        cv2.rectangle(image, (xmin, ymin - ret[1] - baseline), (xmin + ret[0], ymin), color, -1)
-        cv2.putText(image, label, (xmin, ymin - baseline), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
-
-    # GT 박스 그리기
-    for gt in gt_boxes:
-        xmin, ymin, xmax, ymax = gt['position']['minX'], gt['position']['minY'], gt['position']['maxX'], gt['position']['maxY']
-        label = gt['box_caption']
-
-        ret, baseline = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
-        cv2.rectangle(image, (xmin, ymin), (xmax, ymax), color_gt, 1)  # 초록색 박스
-        cv2.rectangle(image, (xmin, ymin - ret[1] - baseline), (xmin + ret[0], ymin), color_gt, -1)
-        cv2.putText(image, label, (xmin, ymin - baseline), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
-
-    # 이미지 저장
-    cv2.imwrite(output_path, image)
-    print(f"Saved image with bounding boxes: {output_path}")
-
-import os
-
-def visualize_ground_truth(dataset, target, gt_output_dir, args):
-    os.makedirs(gt_output_dir, exist_ok=True)  # GT 저장 폴더 생성
-    class_id_to_label = {int(i): str(i) for i in range(1, args.num_classes + 1)}
-    class_id_to_label.update({1: "person", 2: "bicycle", 3: "car"})
-
-    img_indices = target['img_idx'].cpu().numpy()
-    bboxes = target['bbox'].cpu().numpy()
-    clses = target['cls'].cpu().numpy()
-    img_scales = target['img_scale'].cpu().numpy()
-
-    for i, (img_idx, bbox, cls, img_scale) in enumerate(zip(img_indices, bboxes, clses, img_scales)):
-        img_info = dataset.parser.img_infos[img_idx]
-
-        # yxyx to xyxy
-        bbox[:, 0:4] = bbox[:, [1, 0, 3, 2]] * img_scale
-
-        # GT 박스 생성
-        gt_boxes = bounding_boxes(
-            v_boxes=bbox,
-            v_labels=cls,
-            v_scores=None,  # GT는 점수가 없음
-            log_width=img_info['width'],
-            log_height=img_info['height'],
-            class_id_to_label=class_id_to_label,
-            score_threshold=0)
-
-        # 열화상 이미지와 RGB 이미지 경로
-        filename = dataset.thermal_data_dir / img_info['file_name']
-        filename_rgb = dataset.rgb_data_dir / img_info['file_name'].replace('_PreviewData.jpg', '_RGB.jpg')
-
-        # GT 박스 그리기 및 저장
-        thermal_output_path = os.path.join(gt_output_dir, f"{img_info['file_name']}_thermal_gt.jpg")
-        rgb_output_path = os.path.join(gt_output_dir, f"{img_info['file_name']}_rgb_gt.jpg")
-
-        draw_gt_boxes(filename, gt_boxes, args.num_classes, thermal_output_path)
-        draw_gt_boxes(filename_rgb, gt_boxes, args.num_classes, rgb_output_path)
-
-        print(f"Saved thermal GT image: {thermal_output_path}")
-        print(f"Saved RGB GT image: {rgb_output_path}")
-
-def draw_gt_boxes(img_path, gt_boxes, num_classes, output_path):
-    import cv2
-    color_gt = (0, 255, 0)  # GT 박스는 초록색으로 고정
-    image = cv2.imread(str(img_path))
-
-    # GT 박스 그리기
-    for gt in gt_boxes:
-        xmin, ymin, xmax, ymax = gt['position']['minX'], gt['position']['minY'], gt['position']['maxX'], gt['position']['maxY']
-        label = gt['box_caption']
-
-        ret, baseline = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
-        cv2.rectangle(image, (xmin, ymin), (xmax, ymax), color_gt, 1)  # 초록색 박스
-        cv2.rectangle(image, (xmin, ymin - ret[1] - baseline), (xmin + ret[0], ymin), color_gt, -1)
-        cv2.putText(image, label, (xmin, ymin - baseline), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
-
-    # 이미지 저장
-    cv2.imwrite(output_path, image)
-    print(f"Saved GT-only image: {output_path}")'''
 
 class FasterRCNNBoxScoreTarget:
     """ For every original detected bounding box specified in "bounding boxes",

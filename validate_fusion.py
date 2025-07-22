@@ -63,7 +63,7 @@ add_bool_arg(parser, 'redundant-bias', default=None,
 add_bool_arg(parser, 'soft-nms', default=None, help='override model config for soft-nms')
 parser.add_argument('--num-classes', type=int, default=None, metavar='N',
                     help='Override num_classes in model config if set. For fine-tuning from pretrained.')
-parser.add_argument('--att_type', default='None', type=str, choices=['cbam','shuffle','eca'])
+parser.add_argument('--att_type', default='None', type=str, choices=['cbam','shuffle','eca','no_cbam'])
 parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
                     help='number of data loading workers (default: 4)')
 parser.add_argument('-b', '--batch-size', default=16, type=int,
@@ -172,7 +172,7 @@ def validate(args):
     if args.num_gpu > 1:
         bench = torch.nn.DataParallel(bench, device_ids=list(range(args.num_gpu)))
 
-    dataset = create_dataset(args.dataset, args.root,'/home/heeju064/lsmm/Image_quality_score/FLIR/prompt_hj_avg.csv', args.split )
+    dataset = create_dataset(args.dataset, args.root,'/home/719699love/lsmm/Image_quality_score/FLIR/prompt4_1.csv', args.split )
     input_config = resolve_input_config(args, model_config)
     loader = create_loader(
         dataset,
@@ -216,7 +216,7 @@ def validate(args):
             print(output)
             #if args.wandb:
             # 예시
-            #output_dir = "/home/tchjlee/lsmm/bb_output"
+            #output_dir = "/home/719699love/test/"
             #visualize_detections(dataset, output, target, output_dir, args)
             #visualize_detections(dataset, output, target, wandb, args, 'test')
             # GT 이미지를 저장할 폴더

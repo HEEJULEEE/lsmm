@@ -6,7 +6,7 @@ import effdet
 from effdet import EfficientDet
 
 
-from models.fusion_modules import CBAMLayer, ResBlock_CBAM, attention_block, shuffle_attention_block
+from models.fusion_modules import CBAMLayer, ResBlock_CBAM, attention_block, shuffle_attention_block, NoCBAMLayer
 
 ##################################### Attention Fusion Net ###############################################
 class Att_FusionNet(nn.Module):
@@ -65,7 +65,7 @@ class Att_FusionNet(nn.Module):
         self.gate_b_th = nn.Parameter(torch.tensor(0.0))
         self.sigmoid = nn.Sigmoid()
 
-        if args.branch == 'fusion':
+        '''if args.branch == 'fusion':
             self.attention_type = args.att_type
             print("Using {} attention.".format(self.attention_type))
             in_chs = args.channels
@@ -77,8 +77,22 @@ class Att_FusionNet(nn.Module):
                     self.add_module("fusion_"+self.attention_type+str(level), attention_block(2*in_chs))
                 elif self.attention_type=="shuffle":
                     self.add_module("fusion_"+self.attention_type+str(level), shuffle_attention_block(2*in_chs))
+                elif self.attention_type == "no_cbam":
+                    self.add_module("fusion_" + self.attention_type + str(level), NoCBAMLayer(2*in_chs, out_channel=in_chs))
+                    print("in_chs:", in_chs)
+                    print("EfficientDet config:", self.config)
                 else:
-                    raise ValueError('Attention type not supported.')
+                    raise ValueError('Attention type not supported.')'''
+        if args.branch == 'fusion':
+            in_chs = args.channels
+            self.reduce_layers = nn.ModuleList([
+                nn.Sequential(
+                    nn.Conv2d(2*in_chs, in_chs, kernel_size=1),
+                    #nn.BatchNorm2d(in_chs),
+                    nn.ReLU(inplace=True)
+                ) for _ in range(self.config.num_levels)
+            ])
+        
 
     def forward(self, data_pair, rgb_weight, thermal_weight, branch='fusion'):
         thermal_x, rgb_x = data_pair[0], data_pair[1]
@@ -101,13 +115,24 @@ class Att_FusionNet(nn.Module):
             gate_rgb = self.sigmoid(self.gate_w_rgb * rgb_weight + self.gate_b_rgb) 
             gate_th = self.sigmoid(self.gate_w_th * thermal_weight + self.gate_b_th)
             
-            for i, (tx, vx) in enumerate(zip(thermal_x, rgb_x)):
+            '''for i, (tx, vx) in enumerate(zip(thermal_x, rgb_x)):
+                print(f"Level {i} thermal_x shape:", tx.shape)
+                print(f"Level {i} rgb_x shape:", vx.shape)
                 tx = tx * gate_th  # thermal feature에 pre-gating
                 vx = vx * gate_rgb  # rgb feature에 pre-gating
                 x = torch.cat((tx, vx), dim=1)  # concat해서 attention fusion
+                print(f"Level {i} concat x shape:", x.shape)
                 attention = getattr(self, "fusion_" + self.attention_type + str(i))
-                out.append(attention(x))
+                out.append(attention(x))'''
                 
+            
+            for i, (tx, vx) in enumerate(zip(thermal_x, rgb_x)):
+                tx = tx * gate_th
+                vx = vx * gate_rgb
+                x = torch.cat((tx, vx), dim=1)
+                x = self.reduce_layers[i](x)
+                out.append(x)
+                    
         else:
             fpn = getattr(self, f'{branch}_fpn')
             backbone = getattr(self, f'{branch}_backbone')
@@ -121,5 +146,8 @@ class Att_FusionNet(nn.Module):
         
         x_class = class_net(out)
         x_box = box_net(out)
+        
+        print("x_class sample:", x_class[0].detach().cpu().numpy())
+        print("x_box sample:", x_box[0].detach().cpu().numpy())
 
         return x_class, x_box

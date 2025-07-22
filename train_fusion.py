@@ -63,7 +63,7 @@ if __name__ == '__main__':
                         metavar='N', help='mini-batch size (default: 16)')
     parser.add_argument('--channels', default=128, type=int,
                         metavar='N', help='channels (default: 128)')
-    parser.add_argument('--att_type', default='None', type=str, choices=['cbam','shuffle','eca'])
+    parser.add_argument('--att_type', default='None', type=str, choices=['cbam','shuffle','eca','no_cbam'])
     parser.add_argument('--img-size', default=None, type=int,
                         metavar='N', help='Input image dimension, uses model default if empty')
     parser.add_argument('--rgb_mean', type=float, nargs='+', default=None, metavar='MEAN',
@@ -120,8 +120,8 @@ if __name__ == '__main__':
     head_net_params = count_parameters(training_bench.model.fusion_class_net) + count_parameters(training_bench.model.fusion_box_net)
     bifpn_params = count_parameters(training_bench.model.rgb_fpn) + count_parameters(training_bench.model.thermal_fpn)
     full_params = count_parameters(training_bench.model)
-    fusion_net_params = sum([count_parameters(getattr(training_bench.model,"fusion_"+args.att_type+str(i))) for i in range(5)])
-
+    #fusion_net_params = sum([count_parameters(getattr(training_bench.model,"fusion_"+args.att_type+str(i))) for i in range(5)])
+    fusion_net_params = sum([count_parameters(training_bench.model.reduce_layers[i]) for i in range(5)])
 
 
     print("*"*50)
@@ -153,7 +153,7 @@ if __name__ == '__main__':
     #print(f"Type of datasets after create_dataset: {type(data_set)}") 
     #train_dataset, val_dataset = data_set[0], data_set[1]
 
-    train_dataset, val_dataset = create_dataset(args.dataset, args.root, vlm_csv_path = '/home/heeju064/lsmm/Image_quality_score/FLIR/prompt_hj_avg.csv' )
+    train_dataset, val_dataset = create_dataset(args.dataset, args.root, vlm_csv_path = '/home/719699love/lsmm/Image_quality_score/FLIR/prompt4_1.csv' )
 
     train_dataloader = create_loader(
         train_dataset,
@@ -241,8 +241,9 @@ if __name__ == '__main__':
             loss.backward()
             optimizer.step()
 
-            if args.wandb:
-                visualize_target(train_dataset, target, wandb, args, 'train')
+            '''if args.wandb:
+                #visualize_target(train_dataset, target, wandb, args, 'train')
+                visualize_target(train_dataset, target, None, args, 'train')'''
         
         scheduler.step()
 
@@ -262,8 +263,8 @@ if __name__ == '__main__':
                 val_losses_m.update(loss.item(), thermal_img_tensor.size(0))
                 batch_val_loss.append(loss.item())
                 evaluator.add_predictions(output['detections'], target)
-                if args.wandb and epoch == args.epochs:
-                    visualize_detections(val_dataset, output['detections'], target, wandb, args, 'val')
+                '''if args.wandb and epoch == args.epochs:
+                    visualize_detections(val_dataset, output['detections'], target, None, args, 'val')'''
             val_loss_epoch = sum(batch_val_loss) / len(batch_val_loss)
             val_loss.append(sum(batch_val_loss)/len(batch_val_loss))
         
@@ -274,7 +275,7 @@ if __name__ == '__main__':
                         "gate/w_th": training_bench.model.gate_w_th.item(),
                         "gate/b_th": training_bench.model.gate_b_th.item(),}) 
                
-        if epoch == 1 or epoch % 10 == 0:
+        '''if epoch == 1 or epoch % 10 == 0:
             with torch.no_grad():
                 sample_img = rgb_img_tensor[0].cpu().numpy().transpose(1, 2, 0)  
                 sample_img = (sample_img * 255).astype(np.uint8)  
@@ -295,7 +296,7 @@ if __name__ == '__main__':
                         # Attention Map 저장
                         cbam_layer.save_attention_maps(sample_img, epoch, save_path=os.path.join(output_dir, f"cbam_visualization/layer_{i}"))
                     else:
-                        print(f"[ERROR] fusion_cbam{i} NOT FOUND in model!")
+                        print(f"[ERROR] fusion_cbam{i} NOT FOUND in model!")'''
                         
         if saver is not None:
             best_metric, best_epoch = saver.save_checkpoint(epoch=epoch, metric=evaluator.evaluate())
